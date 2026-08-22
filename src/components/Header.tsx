@@ -1,7 +1,16 @@
 import React from 'react';
-import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle } from 'lucide-react';
+import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
+import { AvatarStyle } from './AvatarSelectorModal';
+import whiteThreeSoldiersImg from '../assets/images/kline_white_soldiers_1787370191402.jpg';
+import whiteGoldTrendImg from '../assets/images/kline_white_trend_1787370206165.jpg';
+import whiteIso3dImg from '../assets/images/kline_white_iso3d_1787370223580.jpg';
+import threeSoldiersImg from '../assets/images/kline_three_red_soldiers_1787369799068.jpg';
+import goldTrendKlineImg from '../assets/images/kline_gold_trend_1787369813990.jpg';
+import iso3dKlineImg from '../assets/images/kline_isometric_3d_1787369825191.jpg';
+import minimalFintechImg from '../assets/images/kline_minimal_fintech_1787369837673.jpg';
+import finBullImg from '../assets/images/fin_gold_logo_1787369381609.jpg';
 
 interface HeaderProps {
   lastUpdated: string;
@@ -12,6 +21,12 @@ interface HeaderProps {
   filteredStocks: Stock[];
   criteria: FilterCriteria;
   onOpenExplainer: () => void;
+  alertsCount: number;
+  onOpenAlerts: () => void;
+  onTriggerShock: () => void;
+  onOpenExportImage: () => void;
+  avatarStyle: AvatarStyle;
+  onOpenAvatarSelector: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,7 +37,13 @@ export const Header: React.FC<HeaderProps> = ({
   setAutoRefreshInterval,
   filteredStocks,
   criteria,
-  onOpenExplainer
+  onOpenExplainer,
+  alertsCount,
+  onOpenAlerts,
+  onTriggerShock,
+  onOpenExportImage,
+  avatarStyle,
+  onOpenAvatarSelector
 }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
@@ -31,9 +52,49 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Logo & Main Title */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center shadow-lg shadow-rose-950/40 text-white font-black text-xl">
-              红
-            </div>
+            <button 
+              onClick={onOpenAvatarSelector}
+              className="relative group transition transform hover:scale-105 active:scale-95 text-left"
+              title="点击切换金融专属品牌头像风格（纯白底红三兵看涨、黄金趋势K线、3D水晶、量化金牛等）"
+            >
+              {/* 头像外框与背景色：设置纯白背景 bg-white，精致优雅 */}
+              <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg border border-slate-200 ring-2 ring-amber-400/40 bg-white p-0.5 flex items-center justify-center">
+                {avatarStyle === 'whiteThreeSoldiers' && (
+                  <img src={whiteThreeSoldiersImg} alt="纯白底红三兵" className="w-full h-full object-cover rounded-lg" />
+                )}
+                {avatarStyle === 'whiteGoldTrend' && (
+                  <img src={whiteGoldTrendImg} alt="纯白底黄金趋势" className="w-full h-full object-cover rounded-lg" />
+                )}
+                {avatarStyle === 'whiteIso3d' && (
+                  <img src={whiteIso3dImg} alt="纯白底3D红宝石" className="w-full h-full object-cover rounded-lg" />
+                )}
+                {avatarStyle === 'threeSoldiers' && (
+                  <img src={threeSoldiersImg} alt="红三兵形态" className="w-full h-full object-cover rounded-lg" />
+                )}
+                {avatarStyle === 'goldTrendKline' && (
+                  <img src={goldTrendKlineImg} alt="黄金趋势K线" className="w-full h-full object-cover rounded-lg" />
+                )}
+                {avatarStyle === 'iso3dKline' && (
+                  <img src={iso3dKlineImg} alt="3D水晶K线" className="w-full h-full object-cover rounded-lg" />
+                )}
+                {avatarStyle === 'minimalFintech' && (
+                  <img src={minimalFintechImg} alt="极简科技K线" className="w-full h-full object-cover rounded-lg" />
+                )}
+                {avatarStyle === 'goldBull' && (
+                  <img src={finBullImg} alt="金牛红利" className="w-full h-full object-cover rounded-lg" />
+                )}
+                {avatarStyle === 'redClassic' && (
+                  <div className="w-full h-full bg-white flex items-center justify-center rounded-lg border border-rose-100">
+                    <div className="w-7 h-7 rounded-md bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center text-white font-black text-sm shadow-sm">
+                      红
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-slate-800 border border-amber-500/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-sm text-amber-400">
+                <Sparkles className="w-2.5 h-2.5" />
+              </div>
+            </button>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg sm:text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
@@ -59,36 +120,53 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Market Status & Realtime Controls */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             
-            {/* Live Market Badge */}
-            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700/60 text-xs">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-slate-300 font-medium">A股交易监控</span>
-              <span className="text-slate-500 text-[11px]">|</span>
-              <span className="text-slate-400 flex items-center gap-1 text-[11px]">
-                <Clock className="w-3 h-3" />
-                {lastUpdated}
-              </span>
-            </div>
+            {/* Anomaly Alerts Monitor Bell Button */}
+            <button
+              onClick={onOpenAlerts}
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition active:scale-95 ${
+                alertsCount > 0
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-950/40'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+              title="查看盘中股息率波动±10%异动监控记录"
+            >
+              <Bell className={`w-3.5 h-3.5 ${alertsCount > 0 ? 'text-amber-400 animate-bounce' : 'text-slate-400'}`} />
+              <span>异动监控</span>
+              {alertsCount > 0 ? (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-mono text-[10px] font-bold animate-pulse">
+                  {alertsCount}
+                </span>
+              ) : (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              )}
+            </button>
+
+            {/* Quick Shock Simulation Button */}
+            <button
+              onClick={onTriggerShock}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 hover:border-amber-500/30 transition active:scale-95"
+              title="模拟盘中剧烈大波动（使股息率发生±10%异动跳变）并弹出悬浮预警气泡"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">模拟±10%异动</span>
+            </button>
 
             {/* Auto-Refresh Select */}
             <div className="flex items-center bg-slate-800 rounded-lg border border-slate-700/80 p-0.5 text-xs">
               <span className="text-slate-400 px-2 flex items-center gap-1 text-[11px]">
-                <Zap className="w-3 h-3 text-amber-400" />
-                自动刷新:
+                <Activity className="w-3 h-3 text-emerald-400" />
+                刷新:
               </span>
               <select
                 value={autoRefreshInterval}
                 onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
                 className="bg-slate-900 text-slate-200 rounded px-2 py-1 text-xs border border-slate-700 focus:outline-none focus:border-rose-500 cursor-pointer"
               >
-                <option value={0}>关闭</option>
-                <option value={5}>5秒/次</option>
-                <option value={10}>10秒/次</option>
-                <option value={30}>30秒/次</option>
-                <option value={60}>60秒/次</option>
+                <option value={0}>手动</option>
+                <option value={5}>5秒</option>
+                <option value={10}>10秒</option>
+                <option value={30}>30秒</option>
+                <option value={60}>60秒</option>
               </select>
             </div>
 
@@ -102,17 +180,28 @@ export const Header: React.FC<HeaderProps> = ({
               title="获取最新实时行情并重新计算股息率与加权龙头分"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-rose-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>{isRefreshing ? '计算中...' : '刷新行情'}</span>
+              <span>{isRefreshing ? '计算中...' : '刷新'}</span>
             </button>
 
             {/* Excel Export Button */}
             <button
               onClick={() => exportToExcel(filteredStocks, criteria)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm shadow-emerald-950/40 border border-emerald-500/30 transition active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition active:scale-95"
               title="导出当前筛选结果为 Excel (.xlsx) 表格"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>导出 Excel ({filteredStocks.length})</span>
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">导出</span>
+              <span>Excel</span>
+            </button>
+
+            {/* Image Export Button */}
+            <button
+              onClick={onOpenExportImage}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-sm shadow-rose-950/40 border border-rose-500/30 transition active:scale-95"
+              title="导出当前筛选结果为高保真图片（包含序号、名称、行业、股价、PE、PB、股息率、分红年限、评分）"
+            >
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>导出图片</span>
             </button>
 
           </div>
@@ -121,3 +210,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

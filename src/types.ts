@@ -16,6 +16,13 @@ export interface FinancialQuarter {
   roe: number;              // 年化ROE %
 }
 
+export interface PEHistoryPoint {
+  month: string;            // 月份标签, e.g. "2023-09" 或 "23/09"
+  pe: number;               // 滚动市盈率 PE(TTM)
+  dividendYield: number;    // 对应滚动股息率 %
+  price: number;            // 对应月末收盘价 (元)
+}
+
 export interface Stock {
   code: string;             // 股票代码, e.g. "600036"
   name: string;             // 股票简称, e.g. "招商银行"
@@ -62,6 +69,7 @@ export interface Stock {
   dividendAdvantage: string;        // 高股息与分红护城河亮点
   history: DividendHistoryItem[];   // 近5-8年分红历史
   quarterly: FinancialQuarter[];    // 近期财务趋势
+  peHistory?: PEHistoryPoint[];     // 过去12个月PE滚动估值与股息率月度走势
   updateTime: string;               // 行情更新时间戳
 }
 
@@ -93,12 +101,15 @@ export interface FilterCriteria {
   searchQuery: string;                  // 代码 / 名称 / 拼音
 }
 
+export type StockValuationStatus = '低估' | '正常' | '高估';
+
 export type SortField = 
   | 'leaderScore'
   | 'ttmDividendYield'
   | 'staticDividendYield'
   | 'pe'
   | 'pb'
+  | 'valuation'
   | 'marketCap'
   | 'roe'
   | 'revGrowth'
@@ -122,3 +133,90 @@ export interface StrategyPreset {
   iconName: string;
   criteria: Partial<FilterCriteria>;
 }
+
+export interface DividendAnomalyAlert {
+  id: string;
+  stockCode: string;
+  stockName: string;
+  industry: string;
+  timestamp: string;
+  currentPrice: number;
+  priceChangePercent: number; // 股价涨跌幅 %
+  baseYield: number;          // 变动前/昨收基准股息率 %
+  currentYield: number;       // 当前盘中股息率 %
+  yieldChangePercent: number; // 股息率相对变动幅度 % (+10.5% / -11.2%)
+  direction: 'surge' | 'plunge'; // surge: 股息率飙升 (股价急跌); plunge: 股息率骤降 (股价急涨)
+  reason: string;             // 异动归因分析
+  read?: boolean;             // 是否已读
+}
+
+export interface FiveYearPEValuationCushion {
+  currentPE: number;                  // 当前滚动市盈率 PE-TTM
+  fiveYearMinPE: number;              // 近五年最低 PE
+  fiveYearMaxPE: number;              // 近五年最高 PE
+  fiveYearAvgPE: number;              // 近五年均值 PE
+  fiveYearMedianPE: number;           // 近五年中位数 PE
+  fiveYearPercentile: number;         // 近五年历史PE分位数 % (0% ~ 100%)
+  cushionPercent: number;             // 估值安全垫百分比 % (0% ~ 100%)
+  cushionGrade: 'extreme' | 'high' | 'medium' | 'low' | 'tight'; // 安全垫厚度等级
+  cushionGradeLabel: string;          // 极厚安全垫 / 充足安全垫 / 中等安全垫 / 较薄安全垫 / 估值溢价预警
+  cushionFormulaDescription: string;  // 安全垫计算推导逻辑
+  repairPotentialPercent: number;     // 若估值修复至5年中枢均值的潜在空间 %
+  safetyMarginStatus: 'strong' | 'moderate' | 'weak';
+  historySamplePoints: {
+    year: string;
+    pe: number;
+  }[];
+}
+
+export interface BuyOpportunityEvaluation {
+  score: number;                   // 综合买入机会评分 0 ~ 100
+  grade: 'S' | 'A' | 'B' | 'C';    // 机会评级: S (极佳 90-100) | A (良好 75-89) | B (中性 60-74) | C (谨慎 <60)
+  gradeLabel: string;              // 评级标签
+  actionAdvice: string;            // 操作建议
+  timingTag: string;               // 核心时机标签
+  factors: {
+    pePercentileScore: number;     // PE低估分位得分 (权重40%)
+    pePercentile: number;          // 实际分位数 %
+    dividendYieldScore: number;    // 股息率吸引力得分 (权重30%)
+    actualYield: number;           // 实际滚动股息率 %
+    meanDeviationScore: number;    // 均值折价弹性得分 (权重15%)
+    discountToMean: number;        // 较1年PE均值折价/溢价率 %
+    qualityDefenseScore: number;   // 盈利质量与防御得分 (权重15%)
+    roe: number;                   // 实际ROE %
+  };
+  summary: string;                 // 决策结论
+}
+
+export interface IndustryRadarDimension {
+  dimension: '股息率' | 'PE估值' | 'ROE水平' | '成长增速';
+  stockValue: number;
+  industryAvg: number;
+  unit: string;
+  diff: number;           // stockValue - industryAvg
+  diffPercent: number;    // % difference
+  status: 'superior' | 'inferior' | 'neutral'; // superior: 优于行业; inferior: 落后行业; neutral: 持平
+  stockRadarScore: number;    // 0~100 normalized score for radar
+  industryRadarScore: number; // 0~100 normalized score for radar
+  evaluation: string;         // 简评
+}
+
+export interface IndustryComparisonResult {
+  industryName: string;
+  stockCount: number;
+  dimensions: IndustryRadarDimension[];
+  radarData: {
+    dimension: string;
+    stockScore: number;
+    industryScore: number;
+    stockRaw: string;
+    industryRaw: string;
+    unit: string;
+    advantageText: string;
+    status: 'superior' | 'inferior' | 'neutral';
+  }[];
+  superiorCount: number;      // 领先维度数 (0~4)
+  overallVerdict: string;     // 总体相对优势结论
+  leaderAdvantageTitle: string;
+}
+

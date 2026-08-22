@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Stock, FilterCriteria } from '../types';
+import { getStockValuationStatus } from './calculator';
 
 /**
  * 导出筛选结果为 Excel (.xlsx) 表格
@@ -12,11 +13,15 @@ export function exportToExcel(stocks: Stock[], criteria: FilterCriteria) {
 
   // 1. 构建 Excel 表头和数据行
   const exportData = stocks.map((stock, index) => {
+    const valInfo = getStockValuationStatus(stock);
+
     return {
       '综合排名': index + 1,
       '股票代码': stock.code,
       '股票简称': stock.name,
       '所属行业': stock.industry,
+      '估值情况': valInfo.status, // 低估 / 正常 / 高估
+      '估值安全垫': `${valInfo.cushionPercent}%`,
       '最新现价(元)': stock.price.toFixed(2),
       '今日涨跌幅(%)': (stock.changePercent >= 0 ? '+' : '') + stock.changePercent.toFixed(2) + '%',
       '滚动股息率TTM(%)': stock.ttmDividendYield.toFixed(2) + '%',
@@ -34,7 +39,7 @@ export function exportToExcel(stocks: Stock[], criteria: FilterCriteria) {
       '近12月每股分红(元)': stock.ttmDividendPerShare.toFixed(3),
       '分红周期': stock.dividendCycle,
       '红利贵族标签': stock.isAristocrat ? '连续>10年红利贵族' : (stock.dividendYears >= 5 ? '高分红标杆' : '常规分红'),
-      '分红护城河': stock.dividendAdvantage
+      '估值与护城河诊断': `${valInfo.reason}；${stock.dividendAdvantage}`
     };
   });
 
@@ -47,6 +52,8 @@ export function exportToExcel(stocks: Stock[], criteria: FilterCriteria) {
     { wch: 12 }, // 代码
     { wch: 14 }, // 简称
     { wch: 12 }, // 行业
+    { wch: 12 }, // 估值情况
+    { wch: 14 }, // 估值安全垫
     { wch: 12 }, // 现价
     { wch: 14 }, // 涨跌幅
     { wch: 16 }, // 滚动股息率
@@ -64,7 +71,7 @@ export function exportToExcel(stocks: Stock[], criteria: FilterCriteria) {
     { wch: 16 }, // 12月分红
     { wch: 16 }, // 分红周期
     { wch: 20 }, // 标签
-    { wch: 40 }  // 护城河
+    { wch: 45 }  // 诊断
   ];
   worksheet['!cols'] = colWidths;
 

@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { 
   X, Award, Percent, DollarSign, Calendar, TrendingUp, ShieldCheck, 
-  Calculator, Landmark, ChevronRight, BarChart2, PieChart, Sparkles
+  Calculator, Landmark, ChevronRight, BarChart2, PieChart, Sparkles, Activity
 } from 'lucide-react';
 import { Stock } from '../types';
+import { PEValuationChart } from './PEValuationChart';
+import { BuyOpportunityIndicator } from './BuyOpportunityIndicator';
+import { IndustryComparisonRadar } from './IndustryComparisonRadar';
+import { ValuationCushionBar } from './ValuationCushionBar';
 
 interface StockDetailModalProps {
   stock: Stock | null;
+  allStocks?: Stock[];
   onClose: () => void;
 }
 
-export const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) => {
+export const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, allStocks, onClose }) => {
   if (!stock) return null;
 
   const [investmentAmount, setInvestmentAmount] = useState<number>(100000); // 默认投资10万元
@@ -133,6 +138,18 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClo
             </div>
 
           </div>
+          
+          {/* Buy Opportunity Score & Margin of Safety Indicator */}
+          <BuyOpportunityIndicator stock={stock} />
+
+          {/* 5-Year PE Valuation Cushion Progress Bar & Quantification */}
+          <ValuationCushionBar stock={stock} />
+
+          {/* Industry 4-Dimension Relative Advantage Radar (Dividend Yield, PE, ROE, Growth vs Industry Average) */}
+          <IndustryComparisonRadar stock={stock} allStocks={allStocks} />
+
+          {/* 12-Month PE Rolling Valuation Trend & Valuation Bottom Judgment */}
+          <PEValuationChart stock={stock} />
 
           {/* Leader Score Radar & Deconstruction */}
           <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">

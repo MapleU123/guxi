@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { 
   ArrowUpDown, ArrowUp, ArrowDown, Award, TrendingUp, TrendingDown, 
-  ExternalLink, ShieldCheck, Flame, Star, Info, ChevronRight, CheckCircle2
+  ExternalLink, ShieldCheck, Flame, Star, Info, ChevronRight, CheckCircle2,
+  Image as ImageIcon, Sparkles
 } from 'lucide-react';
 import { Stock, SortConfig, SortField } from '../types';
+import { calculateBuyOpportunityScore, getStockValuationStatus } from '../utils/calculator';
 
 interface StockTableProps {
   stocks: Stock[];
@@ -13,6 +15,7 @@ interface StockTableProps {
   selectedStockCodes: string[];
   onToggleSelectStock: (code: string) => void;
   onToggleSelectAll: () => void;
+  onOpenExportImage?: () => void;
 }
 
 export const StockTable: React.FC<StockTableProps> = ({
@@ -22,7 +25,8 @@ export const StockTable: React.FC<StockTableProps> = ({
   onSelectStock,
   selectedStockCodes,
   onToggleSelectStock,
-  onToggleSelectAll
+  onToggleSelectAll,
+  onOpenExportImage
 }) => {
   const [hoveredScoreStock, setHoveredScoreStock] = useState<string | null>(null);
 
@@ -57,6 +61,17 @@ export const StockTable: React.FC<StockTableProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenExportImage && (
+            <button
+              onClick={onOpenExportImage}
+              className="px-2.5 py-1 rounded text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition flex items-center gap-1 active:scale-95"
+              title="导出当前表格为高保真图片"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
+              <span>导出图片</span>
+            </button>
+          )}
+
           <button
             onClick={() => onSort('leaderScore')}
             className={`px-2.5 py-1 rounded text-xs font-medium transition border flex items-center gap-1 ${
@@ -67,6 +82,19 @@ export const StockTable: React.FC<StockTableProps> = ({
           >
             <Award className="w-3.5 h-3.5 text-amber-400" />
             <span>按龙头分排序</span>
+          </button>
+
+          <button
+            onClick={() => onSort('valuation')}
+            className={`px-2.5 py-1 rounded text-xs font-medium transition border flex items-center gap-1 ${
+              sortConfig.field === 'valuation'
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+            }`}
+            title="优先排序低估/安全垫深厚的标的"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>按估值状态排序</span>
           </button>
 
           <button
@@ -110,6 +138,17 @@ export const StockTable: React.FC<StockTableProps> = ({
 
               <th className="py-3 px-2 font-semibold text-slate-300 min-w-[90px]">
                 所属行业
+              </th>
+
+              <th 
+                onClick={() => onSort('valuation')}
+                className="py-3 px-2 font-semibold text-slate-300 cursor-pointer hover:bg-slate-800/50 transition text-center min-w-[100px]"
+                title="点击按估值状态排序（低估/正常/高估）"
+              >
+                <div className="flex items-center justify-center gap-1">
+                  <span>估值情况</span>
+                  {renderSortIcon('valuation')}
+                </div>
               </th>
 
               <th 
@@ -323,6 +362,30 @@ export const StockTable: React.FC<StockTableProps> = ({
                       </span>
                     </td>
 
+                    {/* Valuation Status */}
+                    <td className="py-3 px-2 text-center">
+                      {(() => {
+                        const valInfo = getStockValuationStatus(stock);
+                        return (
+                          <div className="flex flex-col items-center">
+                            <span 
+                              className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${valInfo.badgeBg} ${valInfo.badgeText} ${valInfo.badgeBorder} shadow-sm inline-flex items-center gap-1 cursor-help`}
+                              title={`${stock.name} 估值诊断：${valInfo.reason}`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${
+                                valInfo.status === '低估' ? 'bg-emerald-400 animate-pulse' :
+                                valInfo.status === '高估' ? 'bg-rose-400' : 'bg-sky-400'
+                              }`} />
+                              {valInfo.status}
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-mono mt-0.5" title={`估值安全垫: ${valInfo.cushionPercent}%`}>
+                              垫{valInfo.cushionPercent}%
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </td>
+
                     {/* Price & Change */}
                     <td className="py-3 px-3 text-right">
                       <div className="font-mono font-semibold text-slate-100 text-sm">
@@ -338,17 +401,40 @@ export const StockTable: React.FC<StockTableProps> = ({
 
                     {/* TTM Dividend Yield */}
                     <td className="py-3 px-3 text-right">
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="font-mono text-sm font-bold text-rose-400">
-                          {stock.ttmDividendYield.toFixed(2)}%
-                        </span>
-                        <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-gradient-to-r from-rose-600 to-rose-400 rounded-full"
-                            style={{ width: `${Math.min(100, (stock.ttmDividendYield / 10) * 100)}%` }}
-                          ></div>
-                        </div>
-                      </div>
+                      {(() => {
+                        const baseYield = stock.prevClose > 0 && stock.ttmDividendPerShare > 0
+                          ? (stock.ttmDividendPerShare / stock.prevClose) * 100
+                          : 0;
+                        const yieldDiffPct = baseYield > 0
+                          ? ((stock.ttmDividendYield - baseYield) / baseYield) * 100
+                          : 0;
+                        const isAnomaly = Math.abs(yieldDiffPct) >= 10.0;
+
+                        return (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="flex items-center gap-1">
+                              {isAnomaly && (
+                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold animate-pulse border ${
+                                  yieldDiffPct > 0 
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
+                                    : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                }`} title={`盘中股息率剧烈异动 ${yieldDiffPct > 0 ? '+' : ''}${yieldDiffPct.toFixed(1)}%`}>
+                                  ⚡{yieldDiffPct > 0 ? '+' : ''}{yieldDiffPct.toFixed(0)}%
+                                </span>
+                              )}
+                              <span className={`font-mono text-sm font-bold ${isAnomaly ? 'text-amber-300' : 'text-rose-400'}`}>
+                                {stock.ttmDividendYield.toFixed(2)}%
+                              </span>
+                            </div>
+                            <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-rose-600 to-rose-400 rounded-full"
+                                style={{ width: `${Math.min(100, (stock.ttmDividendYield / 10) * 100)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     {/* Static Dividend Yield */}
@@ -399,9 +485,30 @@ export const StockTable: React.FC<StockTableProps> = ({
                       )}
                     </td>
 
-                    {/* PE Ratio */}
-                    <td className="py-3 px-3 text-right font-mono font-medium text-slate-200">
-                      {stock.pe > 0 ? stock.pe.toFixed(1) : <span className="text-slate-500">亏损</span>}
+                    {/* PE Ratio & Buy Opportunity Score */}
+                    <td className="py-3 px-3 text-right">
+                      <div className="flex flex-col items-end">
+                        <span className="font-mono font-medium text-slate-200">
+                          {stock.pe > 0 ? stock.pe.toFixed(1) : <span className="text-slate-500">亏损</span>}
+                        </span>
+                        {(() => {
+                          const opp = calculateBuyOpportunityScore(stock);
+                          const gradeColor = {
+                            S: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+                            A: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
+                            B: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+                            C: 'text-rose-400 bg-rose-500/10 border-rose-500/30'
+                          }[opp.grade];
+                          return (
+                            <span 
+                              className={`text-[9px] px-1 py-0.2 rounded font-sans font-semibold border ${gradeColor} mt-0.5`}
+                              title={`买入机会: ${opp.score}分 (${opp.grade}级 · ${opp.gradeLabel})`}
+                            >
+                              {opp.grade}级 · {opp.score.toFixed(0)}分
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
 
                     {/* PB Ratio */}
