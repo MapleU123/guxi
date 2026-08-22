@@ -1,0 +1,6 @@
+{
+  "name": "A股高股息股票筛选器",
+  "description": "专业级A股高股息智能选股平台，支持静态与TTM滚动股息率计算、龙头综合加权评分、行业多维筛选、实时行情监控及Excel导出。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
