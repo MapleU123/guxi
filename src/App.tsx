@@ -9,6 +9,7 @@ import {
   simulateMarketShock,
   getStockValuationStatus
 } from './utils/calculator';
+import { fetchBatchRealtimeQuotes, applyRealtimeQuoteToStock } from './utils/realtimeQuoteService';
 import { Header } from './components/Header';
 import { MarketOverviewBar } from './components/MarketOverviewBar';
 import { StrategyPresets } from './components/StrategyPresets';
@@ -120,7 +121,7 @@ export default function App() {
 
   const handleUpdateCustomStock = useCallback((updatedStock: Stock) => {
     setStocks((prev) => {
-      const next = prev.map(s => s.code === updatedStock.code ? { ...updatedStock, isCustom: true } : s);
+      const next = prev.map(s => s.code === updatedStock.code ? { ...updatedStock } : s);
       const allCustom = next.filter(s => s.isCustom);
       try {
         localStorage.setItem(CUSTOM_STOCKS_STORAGE_KEY, JSON.stringify(allCustom));
@@ -164,12 +165,28 @@ export default function App() {
     return stocks.filter(s => s.isCustom).length;
   }, [stocks]);
 
-  // Manual & Auto Refresh Quotes Handler with Anomaly Detection
-  const handleRefreshQuotes = useCallback(() => {
+  // 查询当天真实股价与刷新行情处理器
+  const handleRefreshQuotes = useCallback(async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
+    try {
+      // 提取当前所有股票代码进行批量真实行情查询
+      const codes = stocks.map(s => s.code);
+      const quotesMap = await fetchBatchRealtimeQuotes(codes);
+      
+      const hasRealQuotes = Object.keys(quotesMap).length > 0;
+
       setStocks((prev) => {
-        const next = simulateRealtimeQuotes(prev);
+        let next: Stock[];
+        if (hasRealQuotes) {
+          next = prev.map(s => {
+            const q = quotesMap[s.code] || quotesMap[s.code.replace(/\D/g, '')];
+            return q ? applyRealtimeQuoteToStock(s, q) : s;
+          });
+        } else {
+          // 若网络离线则使用微波动模拟
+          next = simulateRealtimeQuotes(prev);
+        }
+
         // 检测是否有标的盘中股息率波动超过 ±10%
         const anomalies = checkDividendYieldAnomalies(next, 10.0);
         if (anomalies.length > 0) {
@@ -182,12 +199,21 @@ export default function App() {
         }
         return next;
       });
+
       const now = new Date();
       setLastUpdated(
         `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
       );
+    } catch (err) {
+      console.error('Failed to refresh realtime quotes:', err);
+    } finally {
       setIsRefreshing(false);
-    }, 300);
+    }
+  }, [stocks]);
+
+  // 初次加载时自动从交易所查询当天的真实股价
+  useEffect(() => {
+    handleRefreshQuotes();
   }, []);
 
   // Trigger Flash Market Shock (模拟盘中剧烈振幅，触发 ±10% 股息率异动预警)
@@ -467,6 +493,7 @@ export default function App() {
         stock={selectedStockDetail}
         allStocks={stocks}
         onClose={() => setSelectedStockDetail(null)}
+        onUpdateStock={handleUpdateCustomStock}
       />
 
       {/* Export Image Preview & Download Modal */}

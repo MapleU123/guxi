@@ -2,6 +2,7 @@ import React from 'react';
 import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
+import { getTradingStatus } from '../utils/realtimeQuoteService';
 import { AvatarStyle } from './AvatarSelectorModal';
 import whiteThreeSoldiersImg from '../assets/images/kline_white_soldiers_1787370191402.jpg';
 import whiteGoldTrendImg from '../assets/images/kline_white_trend_1787370206165.jpg';
@@ -51,6 +52,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMarketUniverse,
   customStocksCount = 0
 }) => {
+  const tradingInfo = getTradingStatus();
+
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -102,7 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </button>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg sm:text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
                   A股高股息股票筛选器
                   <span className="hidden sm:inline-flex text-[11px] font-semibold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
@@ -119,8 +122,14 @@ export const Header: React.FC<HeaderProps> = ({
                   )}
                 </h1>
               </div>
-              <p className="text-xs text-slate-400 flex items-center gap-2">
-                <span>股息率≥3% · PE≤20 · 排除ST · 龙头综合赋权排序</span>
+              <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap mt-0.5">
+                <span className={`text-[10px] px-1.5 py-0.2 rounded border font-medium ${tradingInfo.badgeClass}`}>
+                  {tradingInfo.label}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  行情时间: <span className="font-mono text-slate-200 font-semibold">{lastUpdated}</span>
+                </span>
+                <span className="text-slate-600">|</span>
                 <button 
                   onClick={onOpenExplainer}
                   className="text-amber-400 hover:text-amber-300 inline-flex items-center gap-0.5 text-xs transition underline underline-offset-2"
@@ -128,7 +137,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <HelpCircle className="w-3 h-3" />
                   算法说明
                 </button>
-              </p>
+              </div>
             </div>
           </div>
 
@@ -170,7 +179,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center bg-slate-800 rounded-lg border border-slate-700/80 p-0.5 text-xs">
               <span className="text-slate-400 px-2 flex items-center gap-1 text-[11px]">
                 <Activity className="w-3 h-3 text-emerald-400" />
-                刷新:
+                自动:
               </span>
               <select
                 value={autoRefreshInterval}
@@ -185,32 +194,17 @@ export const Header: React.FC<HeaderProps> = ({
               </select>
             </div>
 
-            {/* Manual Refresh Button */}
+            {/* Manual Refresh Live Quotes Button */}
             <button
               onClick={onRefresh}
               disabled={isRefreshing}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition active:scale-95 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 transition active:scale-95 ${
                 isRefreshing ? 'opacity-70 cursor-not-allowed' : ''
               }`}
-              title="获取最新实时行情并重新计算股息率与加权龙头分"
+              title="连接交易所实盘接口获取当天真实股价与滚动指标"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-rose-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>{isRefreshing ? '计算中...' : '刷新'}</span>
-            </button>
-
-            {/* Custom Import Stocks Button */}
-            <button
-              onClick={onOpenImportModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-950/40 border border-indigo-500/40 transition active:scale-95"
-              title="自定义导入或添加股票（支持批量粘贴代码列表或手动单只录入）"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>导入股票</span>
-              {customStocksCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-indigo-900 text-indigo-200 text-[10px] font-bold border border-indigo-400/40">
-                  {customStocksCount}
-                </span>
-              )}
+              <span>{isRefreshing ? '同步实盘中...' : '同步今日真实行情'}</span>
             </button>
 
             {/* Custom Import Stocks Button */}

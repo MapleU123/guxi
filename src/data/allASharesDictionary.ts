@@ -1360,52 +1360,70 @@ export const COMPREHENSIVE_A_SHARE_DATABASE: Stock[] = [
 ];
 
 // 智能动态生成任意 A 股标的（确保任意 6 位代码或搜索词均可生成完整的深度档案）
-export function generateDynamicStockProfile(code: string, nameGuess?: string): Stock {
+export function generateDynamicStockProfile(
+  code: string, 
+  nameGuess?: string,
+  realQuote?: {
+    price?: number;
+    prevClose?: number;
+    change?: number;
+    changePercent?: number;
+    pe?: number;
+    pb?: number;
+    marketCap?: number;
+    name?: string;
+    updateTime?: string;
+  }
+): Stock {
   const cleanCode = code.replace(/[^0-9]/g, '');
   const market = getMarketFromCode(cleanCode);
-  const name = nameGuess || `标的_${cleanCode}`;
+  const name = realQuote?.name || nameGuess || `标的_${cleanCode}`;
   
   // 根据代码号段合理推算行业
   let industry = '制造业';
-  let estPrice = 16.80;
-  let estPE = 13.5;
-  let estPB = 1.35;
-  let estCap = 280.0;
+  let estPrice = realQuote?.price && realQuote.price > 0 ? realQuote.price : 16.80;
+  let estPE = realQuote?.pe && realQuote.pe > 0 ? realQuote.pe : 13.5;
+  let estPB = realQuote?.pb && realQuote.pb > 0 ? realQuote.pb : 1.35;
+  let estCap = realQuote?.marketCap && realQuote.marketCap > 0 ? realQuote.marketCap : 280.0;
   let estDividendYield = 4.20;
   let estROE = 11.5;
   let estYears = 6;
   
   if (cleanCode.startsWith('600') || cleanCode.startsWith('601')) {
     industry = '公用与周期';
-    estPrice = 12.50;
-    estPE = 10.2;
+    if (!realQuote?.price) estPrice = 12.50;
+    if (!realQuote?.pe) estPE = 10.2;
     estDividendYield = 4.80;
-    estCap = 450.0;
+    if (!realQuote?.marketCap) estCap = 450.0;
     estYears = 12;
   } else if (cleanCode.startsWith('000') || cleanCode.startsWith('002')) {
     industry = '消费与制造';
-    estPrice = 22.00;
-    estPE = 16.0;
+    if (!realQuote?.price) estPrice = 22.00;
+    if (!realQuote?.pe) estPE = 16.0;
     estDividendYield = 3.50;
-    estCap = 220.0;
+    if (!realQuote?.marketCap) estCap = 220.0;
     estYears = 8;
   } else if (cleanCode.startsWith('300')) {
     industry = '科技与医药';
-    estPrice = 35.00;
-    estPE = 28.0;
+    if (!realQuote?.price) estPrice = 35.00;
+    if (!realQuote?.pe) estPE = 28.0;
     estDividendYield = 1.80;
-    estCap = 180.0;
+    if (!realQuote?.marketCap) estCap = 180.0;
     estYears = 5;
   } else if (cleanCode.startsWith('688')) {
     industry = '半导体与硬科技';
-    estPrice = 45.00;
-    estPE = 45.0;
+    if (!realQuote?.price) estPrice = 45.00;
+    if (!realQuote?.pe) estPE = 45.0;
     estDividendYield = 1.20;
-    estCap = 210.0;
+    if (!realQuote?.marketCap) estCap = 210.0;
     estYears = 3;
   }
 
   const dps = Number(((estPrice * estDividendYield) / 100).toFixed(3));
+  const change = realQuote?.change !== undefined ? realQuote.change : 0.15;
+  const changePercent = realQuote?.changePercent !== undefined ? realQuote.changePercent : 0.90;
+  const prevClose = realQuote?.prevClose || +(estPrice - change).toFixed(2);
+  const updateTime = realQuote?.updateTime || '15:00:00';
 
   return {
     code: cleanCode,
@@ -1414,9 +1432,9 @@ export function generateDynamicStockProfile(code: string, nameGuess?: string): S
     industry,
     market,
     price: estPrice,
-    change: 0.15,
-    changePercent: 0.90,
-    prevClose: estPrice - 0.15,
+    change,
+    changePercent,
+    prevClose,
     lastYearDividendPerShare: dps,
     ttmDividendPerShare: dps,
     staticDividendYield: estDividendYield,
@@ -1444,6 +1462,6 @@ export function generateDynamicStockProfile(code: string, nameGuess?: string): S
     quarterly: [
       { quarter: '2024Q3', revenue: Number((estCap * 0.45).toFixed(1)), netProfit: Number((estCap / estPE * 0.75).toFixed(1)), roe: estROE }
     ],
-    updateTime: '15:00:00'
+    updateTime
   };
 }
