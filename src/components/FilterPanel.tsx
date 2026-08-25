@@ -1,12 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Filter, Search, SlidersHorizontal, ChevronDown, ChevronUp, 
   HelpCircle, CheckSquare, Square, X, Layers, Check, Plus,
-  Sparkles, ArrowUpRight, ShieldCheck, TrendingUp, Database
+  Sparkles, ArrowUpRight, ShieldCheck, TrendingUp, Database, Loader2
 } from 'lucide-react';
 import { FilterCriteria, DividendYieldType, Stock } from '../types';
 import { ALL_INDUSTRIES } from '../data/stocksData';
-import { generateDynamicStockProfile } from '../data/allASharesDictionary';
+import { searchAllAShares, fetchOrBuildStock, SearchResultItem } from '../utils/stockSearchService';
 
 const ALL_BOARDS = [
   { id: '沪市主板', name: '沪市主板', count: 1692, color: 'text-rose-400' },
@@ -14,6 +14,16 @@ const ALL_BOARDS = [
   { id: '创业板', name: '创业板', count: 1358, color: 'text-amber-400' },
   { id: '科创板', name: '科创板', count: 575, color: 'text-emerald-400' },
   { id: '北交所', name: '北交所', count: 262, color: 'text-purple-400' }
+];
+
+// 常见快速试搜标的（涵盖周期、消费、老字号、科技、化工等）
+const QUICK_SEARCH_EXAMPLES = [
+  { label: '赤天化', code: '600227' },
+  { label: '宝泰隆', code: '601011' },
+  { label: '陕西黑猫', code: '601015' },
+  { label: '同仁堂', code: '600085' },
+  { label: '大族激光', code: '002008' },
+  { label: '中国神华', code: '601088' }
 ];
 
 interface FilterPanelProps {
@@ -40,6 +50,9 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showYieldTooltip, setShowYieldTooltip] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [smartSuggestions, setSmartSuggestions] = useState<SearchResultItem[]>([]);
+  const [isSearchingOnline, setIsSearchingOnline] = useState(false);
+  const [isLoadingStock, setIsLoadingStock] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // 点击外部关闭搜索下拉
@@ -53,51 +66,64 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // 实时搜索候选匹配（从所有已存股票中模糊匹配）
-  const searchSuggestions = React.useMemo(() => {
-    const q = criteria.searchQuery.trim().toUpperCase();
-    if (!q) return [];
-    
-    return allStocks
-      .filter((s) => {
-        const matchCode = s.code.toUpperCase().includes(q);
-        const matchName = s.name.toUpperCase().includes(q);
-        const matchPinyin = s.pinyin ? s.pinyin.toUpperCase().includes(q) : false;
-        const matchIndustry = s.industry ? s.industry.toUpperCase().includes(q) : false;
-        return matchCode || matchName || matchPinyin || matchIndustry;
-      })
-      .slice(0, 6);
-  }, [allStocks, criteria.searchQuery]);
-
-  // 是否输入了 6 位纯数字股票代码但当前本地池暂无精确匹配
-  const potentialNewCode = React.useMemo(() => {
+  // 全市场 5000+ A股智能联想检索（Debounce 防抖 + 在线 API + 本地大词典）
+  useEffect(() => {
     const q = criteria.searchQuery.trim();
-    if (/^\d{6}$/.test(q)) {
-      const exists = allStocks.some((s) => s.code === q);
-      return exists ? null : q;
+    if (!q) {
+      setSmartSuggestions([]);
+      setIsSearchingOnline(false);
+      return;
     }
-    return null;
-  }, [allStocks, criteria.searchQuery]);
 
-  // 处理直接从搜索推荐点击股票
-  const handleSelectSuggestion = (stock: Stock) => {
-    onChange({ ...criteria, searchQuery: stock.code, searchBypassFilters: true });
-    setIsSearchFocused(false);
-    if (onSelectStock) {
-      onSelectStock(stock);
+    setIsSearchingOnline(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchAllAShares(q, allStocks);
+        setSmartSuggestions(results);
+      } catch (err) {
+        console.error('Failed to search stocks:', err);
+      } finally {
+        setIsSearchingOnline(false);
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [criteria.searchQuery, allStocks]);
+
+  // 处理直接从搜索推荐点击股票（支持一键穿透获取真实行情并打开档案）
+  const handleSelectSearchResult = async (item: SearchResultItem) => {
+    setIsLoadingStock(true);
+    try {
+      let targetStock: Stock;
+      const existingInPool = allStocks.find((s) => s.code === item.code);
+
+      if (existingInPool) {
+        targetStock = existingInPool;
+      } else {
+        // 从真实行情接口拉取盘口并生成完整画像
+        targetStock = await fetchOrBuildStock(item.code, item.name);
+        if (onAddCustomStock) {
+          onAddCustomStock([targetStock]);
+        }
+      }
+
+      onChange({ ...criteria, searchQuery: targetStock.code, searchBypassFilters: true });
+      setIsSearchFocused(false);
+      if (onSelectStock) {
+        onSelectStock(targetStock);
+      }
+    } catch (err) {
+      console.error('Error selecting stock:', err);
+    } finally {
+      setIsLoadingStock(false);
     }
   };
 
-  // 处理未收录 6 位代码的一键自动生成与查看
-  const handleCreateAndOpenStock = (code: string) => {
-    const newStock = generateDynamicStockProfile(code);
-    if (onAddCustomStock) {
-      onAddCustomStock([newStock]);
-    }
-    onChange({ ...criteria, searchQuery: code, searchBypassFilters: true });
-    setIsSearchFocused(false);
-    if (onSelectStock) {
-      onSelectStock(newStock);
+  // 处理按回车键直接选中第一项
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && smartSuggestions.length > 0) {
+      e.preventDefault();
+      handleSelectSearchResult(smartSuggestions[0]);
     }
   };
 
@@ -175,14 +201,19 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
               type="text"
               value={criteria.searchQuery}
               onFocus={() => setIsSearchFocused(true)}
+              onKeyDown={handleKeyDown}
               onChange={(e) => {
                 onChange({ ...criteria, searchQuery: e.target.value });
                 setIsSearchFocused(true);
               }}
-              placeholder="输入代码 / 简称 / 拼音 (如 600519, 茅台, GZMT)"
+              placeholder="全A股5000+秒搜: 输入名称/拼音/代码 (如 赤天化, 宝泰隆, 同仁堂, cth, 002008)"
               className="w-full bg-slate-800 text-slate-100 placeholder-slate-500 rounded-lg pl-9 pr-8 py-2 text-xs border border-slate-700 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition"
             />
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            {isSearchingOnline ? (
+              <Loader2 className="w-4 h-4 text-rose-400 absolute left-3 top-2.5 animate-spin" />
+            ) : (
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            )}
             {criteria.searchQuery && (
               <button
                 onClick={() => onChange({ ...criteria, searchQuery: '' })}
@@ -191,6 +222,24 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+
+          {/* 常用典型 A 股快速试搜标签 */}
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-[10px]">
+            <span className="text-slate-500">试搜:</span>
+            {QUICK_SEARCH_EXAMPLES.map((ex) => (
+              <button
+                key={ex.code}
+                type="button"
+                onClick={() => {
+                  onChange({ ...criteria, searchQuery: ex.label, searchBypassFilters: true });
+                  setIsSearchFocused(true);
+                }}
+                className="px-1.5 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-rose-300 border border-slate-700/60 transition"
+              >
+                {ex.label}
+              </button>
+            ))}
           </div>
 
           {/* Search Options & Filter-Bypass Switch */}
@@ -214,69 +263,95 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
             </div>
           )}
 
-          {/* Live Search Autocomplete Popover Dropdown */}
+          {/* Live Search Autocomplete Popover Dropdown (全A股5000+智能联想与直通穿透) */}
           {isSearchFocused && criteria.searchQuery.trim() !== '' && (
-            <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-slate-850 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden divide-y divide-slate-800">
-              {searchSuggestions.length > 0 ? (
-                <div>
-                  <div className="px-3 py-1.5 bg-slate-800/80 text-[10px] font-semibold text-slate-400 flex items-center justify-between">
-                    <span>匹配标的推荐 (点击直接打开档案)</span>
-                    <span className="text-slate-500">{searchSuggestions.length} 条</span>
-                  </div>
-                  {searchSuggestions.map((stock) => (
-                    <div
-                      key={stock.code}
-                      onClick={() => handleSelectSuggestion(stock)}
-                      className="px-3 py-2 hover:bg-slate-800 cursor-pointer flex items-center justify-between transition group text-xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-100 group-hover:text-rose-400 transition font-mono">
-                          {stock.code}
-                        </span>
-                        <span className="font-semibold text-slate-200">{stock.name}</span>
-                        <span className="text-[10px] px-1.5 py-0.2 bg-slate-800 text-slate-400 rounded border border-slate-700">
-                          {stock.industry}
-                        </span>
-                        {stock.isCustom && (
-                          <span className="text-[9px] px-1 py-0.2 bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30">
-                            自定义
+            <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden divide-y divide-slate-800 max-h-80 overflow-y-auto">
+              <div className="px-3 py-1.5 bg-slate-800/90 text-[10px] font-semibold text-slate-400 flex items-center justify-between sticky top-0 z-10 backdrop-blur-sm">
+                <span className="flex items-center gap-1.5">
+                  <Database className="w-3 h-3 text-rose-400" />
+                  大A全市场 5,652 支股票智能检索 (回车/点击即可穿透查看)
+                </span>
+                {isSearchingOnline && (
+                  <span className="text-rose-400 flex items-center gap-1">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> 查询中
+                  </span>
+                )}
+                {!isSearchingOnline && (
+                  <span className="text-slate-500">{smartSuggestions.length} 条匹配</span>
+                )}
+              </div>
+
+              {smartSuggestions.length > 0 ? (
+                <div className="divide-y divide-slate-800/60">
+                  {smartSuggestions.map((item) => {
+                    const st = item.stock;
+                    return (
+                      <div
+                        key={item.code}
+                        onClick={() => handleSelectSearchResult(item)}
+                        className="px-3 py-2 hover:bg-slate-800/90 cursor-pointer flex items-center justify-between transition group text-xs"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-100 group-hover:text-rose-400 transition font-mono">
+                            {item.code}
                           </span>
-                        )}
+                          <span className="font-semibold text-slate-200 group-hover:text-white">
+                            {item.name}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.2 bg-slate-800 text-slate-400 rounded border border-slate-700">
+                            {item.market === 'SH' ? '沪市' : item.market === 'BJ' ? '北交所' : '深市'}
+                          </span>
+                          {item.pinyin && (
+                            <span className="text-[10px] text-slate-500 font-mono uppercase">
+                              {item.pinyin}
+                            </span>
+                          )}
+                          {item.existsInLocalPool ? (
+                            <span className="text-[9px] px-1 py-0.2 bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">
+                              已在池中
+                            </span>
+                          ) : (
+                            <span className="text-[9px] px-1 py-0.2 bg-rose-500/20 text-rose-300 rounded border border-rose-500/30">
+                              全A穿透
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 text-[11px] font-mono shrink-0">
+                          {st ? (
+                            <>
+                              <span className="text-slate-300">¥{st.price.toFixed(2)}</span>
+                              <span className="text-rose-400 font-semibold" title="滚动股息率TTM">
+                                股息 {st.ttmDividendYield.toFixed(2)}%
+                              </span>
+                              <span className="text-indigo-400">PE {st.pe > 0 ? st.pe.toFixed(1) : '-'}</span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400 text-[10px] group-hover:text-rose-300 flex items-center gap-0.5">
+                              点击穿透生成档案
+                            </span>
+                          )}
+                          <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-rose-400 transition" />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 text-[11px] font-mono">
-                        <span className="text-slate-300">¥{stock.price.toFixed(2)}</span>
-                        <span className="text-rose-400 font-semibold" title="滚动股息率TTM">
-                          股息 {stock.ttmDividendYield.toFixed(2)}%
-                        </span>
-                        <span className="text-indigo-400">PE {stock.pe.toFixed(1)}</span>
-                        <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-rose-400 transition" />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="p-3 text-center text-xs text-slate-400">
-                  <p>当前股票池未找到完全匹配的标的</p>
-                </div>
-              )}
-
-              {/* 识别到未收录 6 位代码时的直通生成通道 */}
-              {potentialNewCode && (
-                <div className="p-2.5 bg-gradient-to-r from-rose-950/40 to-indigo-950/40 border-t border-rose-500/30">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 text-xs text-rose-300">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>识别到未录入A股代码 <strong>{potentialNewCode}</strong></span>
+                <div className="p-4 text-center text-xs text-slate-400">
+                  {isSearchingOnline ? (
+                    <div className="flex items-center justify-center gap-2 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-rose-400" />
+                      <span>正在全网穿透检索 A 股 5,652 支股票库...</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCreateAndOpenStock(potentialNewCode)}
-                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[11px] font-bold shadow-md transition flex items-center gap-1 shrink-0"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>一键载入并查看档案</span>
-                    </button>
-                  </div>
+                  ) : (
+                    <div>
+                      <p className="text-slate-300 mb-1">未找到包含 "{criteria.searchQuery}" 的标的</p>
+                      <p className="text-[11px] text-slate-500">
+                        支持输入任意 6 位代码（如 600227）、股票简称（如 赤天化、宝泰隆、陕西黑猫、同仁堂、大族激光）或拼音首字母（如 cth, btl, sxhm, trt, dzjg）
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

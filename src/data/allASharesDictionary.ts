@@ -1356,13 +1356,198 @@ export const COMPREHENSIVE_A_SHARE_DATABASE: Stock[] = [
       { quarter: '2024Q3', revenue: 681.3, netProfit: 51.9, roe: 6.0 }
     ],
     updateTime: '15:00:00'
+  },
+  // ==================== 典型精选全A股代表标的 ====================
+  {
+    code: '600085',
+    name: '同仁堂',
+    pinyin: 'TRT',
+    industry: '医药生物',
+    market: 'SH',
+    price: 24.25,
+    change: 0.47,
+    changePercent: 1.98,
+    prevClose: 23.78,
+    lastYearDividendPerShare: 0.50,
+    ttmDividendPerShare: 0.50,
+    staticDividendYield: 2.06,
+    ttmDividendYield: 2.06,
+    dividendYears: 27,
+    payoutRatio: 40.5,
+    dividendCycle: '年度分红',
+    pe: 30.8,
+    pb: 2.48,
+    marketCap: 332.6,
+    roe: 13.5,
+    revGrowth: 8.2,
+    netProfitGrowth: 9.6,
+    isST: false,
+    isDelisted: false,
+    isLeader: true,
+    isAristocrat: true,
+    description: '中药老字号领头羊与国宝级中医药品牌，拥有安宫牛黄丸、同仁牛黄清心丸等极强护城河品种。',
+    dividendAdvantage: '上市27年连续现金分红，品牌护城河与现金流极度充沛。',
+    history: [
+      { year: 2023, dividendPerShare: 0.50, dividendYield: 2.0, payoutRatio: 40.5, cashTotal: 6.86, scheme: '10派5.00元' }
+    ],
+    quarterly: [
+      { quarter: '2024Q3', revenue: 138.2, netProfit: 13.5, roe: 13.8 }
+    ],
+    updateTime: '15:00:00'
+  },
+  {
+    code: '002008',
+    name: '大族激光',
+    pinyin: 'DZJG',
+    industry: '机械设备',
+    market: 'SZ',
+    price: 85.05,
+    change: -1.05,
+    changePercent: -1.22,
+    prevClose: 86.10,
+    lastYearDividendPerShare: 0.20,
+    ttmDividendPerShare: 0.20,
+    staticDividendYield: 0.24,
+    ttmDividendYield: 0.24,
+    dividendYears: 18,
+    payoutRatio: 25.0,
+    dividendCycle: '年度分红',
+    pe: 44.0,
+    pb: 4.08,
+    marketCap: 813.7,
+    roe: 8.5,
+    revGrowth: 12.5,
+    netProfitGrowth: 18.0,
+    isST: false,
+    isDelisted: false,
+    isLeader: true,
+    isAristocrat: false,
+    description: '国内激光加工设备龙头领军企业，业务涵盖消费电子、新能源电池、PCB与半导体核心装备制造。',
+    dividendAdvantage: '上市以来持续保持规范分红，具备高端装备制造与自主可控技术储备。',
+    history: [
+      { year: 2023, dividendPerShare: 0.20, dividendYield: 0.3, payoutRatio: 25.0, cashTotal: 2.10, scheme: '10派2.00元' }
+    ],
+    quarterly: [
+      { quarter: '2024Q3', revenue: 101.3, netProfit: 14.2, roe: 9.1 }
+    ],
+    updateTime: '15:00:00'
+  },
+  {
+    code: '600227',
+    name: '赤天化',
+    pinyin: 'CTH',
+    industry: '基础化工',
+    market: 'SH',
+    price: 3.81,
+    change: -0.14,
+    changePercent: -3.54,
+    prevClose: 3.95,
+    lastYearDividendPerShare: 0.05,
+    ttmDividendPerShare: 0.05,
+    staticDividendYield: 1.31,
+    ttmDividendYield: 1.31,
+    dividendYears: 5,
+    payoutRatio: 30.0,
+    dividendCycle: '年度分红',
+    pe: 18.5,
+    pb: 2.87,
+    marketCap: 48.8,
+    roe: 6.2,
+    revGrowth: 4.5,
+    netProfitGrowth: 5.8,
+    isST: false,
+    isDelisted: false,
+    isLeader: false,
+    isAristocrat: false,
+    description: '贵州省化肥与化工主要骨干企业，主要从事氮肥、复合肥、精细化工及医药健康相关业务。',
+    dividendAdvantage: '近年来持续优化资产结构与主业盈利能力，保持常规现金回报机制。',
+    history: [
+      { year: 2023, dividendPerShare: 0.05, dividendYield: 1.3, payoutRatio: 30.0, cashTotal: 0.64, scheme: '10派0.50元' }
+    ],
+    quarterly: [
+      { quarter: '2024Q3', revenue: 16.5, netProfit: 0.8, roe: 6.5 }
+    ],
+    updateTime: '15:00:00'
+  },
+  {
+    code: '601011',
+    name: '宝泰隆',
+    pinyin: 'BTL',
+    industry: '煤炭开采',
+    market: 'SH',
+    price: 2.94,
+    change: -0.06,
+    changePercent: -2.00,
+    prevClose: 3.00,
+    lastYearDividendPerShare: 0.08,
+    ttmDividendPerShare: 0.08,
+    staticDividendYield: 2.72,
+    ttmDividendYield: 2.72,
+    dividendYears: 8,
+    payoutRatio: 35.0,
+    dividendCycle: '年度分红',
+    pe: 12.8,
+    pb: 1.05,
+    marketCap: 56.3,
+    roe: 5.5,
+    revGrowth: 3.2,
+    netProfitGrowth: 4.0,
+    isST: false,
+    isDelisted: false,
+    isLeader: false,
+    isAristocrat: false,
+    description: '东北地区大型现代煤化工与新材料循环经济高新技术企业，业务涵盖焦炭、石墨烯新材料及氢能源。',
+    dividendAdvantage: '资产负债结构合理，破净低估值属性，持续实施股东回报。',
+    history: [
+      { year: 2023, dividendPerShare: 0.08, dividendYield: 2.7, payoutRatio: 35.0, cashTotal: 1.53, scheme: '10派0.80元' }
+    ],
+    quarterly: [
+      { quarter: '2024Q3', revenue: 21.0, netProfit: 1.2, roe: 5.8 }
+    ],
+    updateTime: '15:00:00'
+  },
+  {
+    code: '601015',
+    name: '陕西黑猫',
+    pinyin: 'SXHM',
+    industry: '煤炭开采',
+    market: 'SH',
+    price: 3.59,
+    change: -0.09,
+    changePercent: -2.45,
+    prevClose: 3.68,
+    lastYearDividendPerShare: 0.12,
+    ttmDividendPerShare: 0.12,
+    staticDividendYield: 3.34,
+    ttmDividendYield: 3.34,
+    dividendYears: 9,
+    payoutRatio: 40.0,
+    dividendCycle: '年度分红',
+    pe: 15.2,
+    pb: 1.52,
+    marketCap: 73.3,
+    roe: 7.2,
+    revGrowth: 5.8,
+    netProfitGrowth: 6.5,
+    isST: false,
+    isDelisted: false,
+    isLeader: false,
+    isAristocrat: false,
+    description: '循环经济型煤焦化综合利用领军企业，以焦炭为基础延伸生产甲醇、LNG、合成氨等多种高附加值化工产品。',
+    dividendAdvantage: '股息率超过3.3%，循环经济链条具备成本优势，长期重视股东红利派发。',
+    history: [
+      { year: 2023, dividendPerShare: 0.12, dividendYield: 3.3, payoutRatio: 40.0, cashTotal: 2.45, scheme: '10派1.20元' }
+    ],
+    quarterly: [
+      { quarter: '2024Q3', revenue: 38.5, netProfit: 2.1, roe: 7.5 }
+    ],
+    updateTime: '15:00:00'
   }
 ];
 
 // 智能动态生成任意 A 股标的（确保任意 6 位代码或搜索词均可生成完整的深度档案）
 export function generateDynamicStockProfile(
   code: string, 
-  nameGuess?: string,
   realQuote?: {
     price?: number;
     prevClose?: number;
@@ -1373,7 +1558,8 @@ export function generateDynamicStockProfile(
     marketCap?: number;
     name?: string;
     updateTime?: string;
-  }
+  } | null,
+  nameGuess?: string
 ): Stock {
   const cleanCode = code.replace(/[^0-9]/g, '');
   const market = getMarketFromCode(cleanCode);

@@ -179,7 +179,86 @@ app.get('/api/quotes', async (req, res) => {
   }
 });
 
-// 3. 健康检查 API
+// 辅助函数：反转义 Unicode 字符 (\u8d64\u5929\u5316 -> 赤天化)
+function decodeUnicodeString(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/%u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+// 3. 全市场 A 股智能搜索 API (支持名称、拼音首字母、6位代码任意检索)
+app.get('/api/search', async (req, res) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    if (!q) {
+      return res.json({ success: true, count: 0, data: [] });
+    }
+
+    const url = `https://smartbox.gtimg.cn/s3/?t=all&q=${encodeURIComponent(q)}`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(502).json({ error: 'Failed to search from upstream' });
+    }
+
+    const buffer = await response.arrayBuffer();
+    const text = new TextDecoder('gbk').decode(buffer);
+    const match = text.match(/v_hint=\"(.*?)\"/);
+    
+    if (!match || !match[1]) {
+      return res.json({ success: true, count: 0, data: [] });
+    }
+
+    const rawItems = match[1].split('^');
+    const results = rawItems
+      .map((item) => {
+        const parts = item.split('~');
+        const rawMarket = (parts[0] || 'sh').toLowerCase();
+        let market: 'SH' | 'SZ' | 'BJ' = 'SH';
+        if (rawMarket === 'sz') market = 'SZ';
+        else if (rawMarket === 'bj') market = 'BJ';
+
+        const code = parts[1] || '';
+        const rawName = parts[2] || '';
+        const name = decodeUnicodeString(rawName);
+        const pinyin = parts[3] || '';
+        const type = parts[4] || '';
+
+        return {
+          market,
+          code,
+          name,
+          pinyin,
+          type,
+          fullCode: `${market.toLowerCase()}${code}`
+        };
+      })
+      // 优先保留 A 股核心股票与主要标的 (GP-A 或 6位数字代码)
+      .filter((item) => {
+        return (
+          item.code &&
+          item.name &&
+          (/^\d{6}$/.test(item.code) || item.type.includes('GP-A') || item.type.includes('GP'))
+        );
+      });
+
+    res.json({
+      success: true,
+      count: results.length,
+      data: results
+    });
+  } catch (err: any) {
+    console.error('Error in /api/search:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// 4. 健康检查 API
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });

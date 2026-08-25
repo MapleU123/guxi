@@ -1,12 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, PieChart, Layers, Search, Sparkles, ArrowUpRight, 
   ShieldCheck, TrendingUp, CheckCircle2, Award, Landmark, 
-  BarChart3, Plus, Flame, Filter, HelpCircle, Database, Check
+  BarChart3, Plus, Flame, Filter, HelpCircle, Database, Check, Loader2
 } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
-import { generateDynamicStockProfile } from '../data/allASharesDictionary';
 import { getStockBoard } from '../utils/calculator';
+import { searchAllAShares, fetchOrBuildStock, SearchResultItem } from '../utils/stockSearchService';
 
 interface MarketUniverseModalProps {
   isOpen: boolean;
@@ -133,27 +133,44 @@ export const MarketUniverseModal: React.FC<MarketUniverseModalProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'lookup' | 'baskets'>('overview');
   const [searchCode, setSearchCode] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [smartResults, setSmartResults] = useState<SearchResultItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeSelectedStock, setActiveSelectedStock] = useState<Stock | null>(null);
+  const [isLoadingActiveStock, setIsLoadingActiveStock] = useState(false);
 
-  // 实时穿透查询全市场股票（从现有列表或全A字典动态解析）
-  const searchedStock = useMemo(() => {
-    const q = searchCode.trim().toUpperCase();
-    if (!q) return null;
-    
-    // 1. 优先在已加载池中找
-    const localMatch = allStocks.find(s => 
-      s.code.toUpperCase() === q || 
-      s.name.toUpperCase() === q || 
-      (s.pinyin && s.pinyin.toUpperCase() === q)
-    );
-    if (localMatch) return localMatch;
-
-    // 2. 若是 6 位数字代码，动态生成全量A股档案
-    if (/^\d{6}$/.test(q)) {
-      return generateDynamicStockProfile(q);
+  // 侦听搜索词变化，进行全 A 股 5000+ 智能检索
+  useEffect(() => {
+    const q = searchCode.trim();
+    if (!q) {
+      setSmartResults([]);
+      setIsSearching(false);
+      return;
     }
 
-    return null;
-  }, [allStocks, searchCode]);
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await searchAllAShares(q, allStocks);
+        setSmartResults(res);
+        // 如果搜出来有第一项且还没选，默认加载第一项作为预览
+        if (res.length > 0) {
+          const first = res[0];
+          if (first.stock) {
+            setActiveSelectedStock(first.stock);
+          } else {
+            const dynamicStock = await fetchOrBuildStock(first.code, first.name);
+            setActiveSelectedStock(dynamicStock);
+          }
+        }
+      } catch (err) {
+        console.error('Error searching in universe modal:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [searchCode, allStocks]);
 
   if (!isOpen) return null;
 
@@ -161,6 +178,23 @@ export const MarketUniverseModal: React.FC<MarketUniverseModalProps> = ({
     onAddCustomStock([stock]);
     onSelectStock(stock);
     onClose();
+  };
+
+  const handleSelectResultItem = async (item: SearchResultItem) => {
+    setIsLoadingActiveStock(true);
+    try {
+      let target: Stock;
+      if (item.stock) {
+        target = item.stock;
+      } else {
+        target = await fetchOrBuildStock(item.code, item.name);
+      }
+      setActiveSelectedStock(target);
+    } catch (err) {
+      console.error('Failed to load item:', err);
+    } finally {
+      setIsLoadingActiveStock(false);
+    }
   };
 
   const handleApplyBoardFilter = (boardName: string) => {
@@ -409,20 +443,27 @@ export const MarketUniverseModal: React.FC<MarketUniverseModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: 全域 6 位代码即时穿透查询 */}
+          {/* TAB 2: 全域 5,652 支标的秒级穿透查询 */}
           {activeTab === 'lookup' && (
             <div className="space-y-5">
               <div className="bg-slate-850 border border-slate-700/80 rounded-xl p-4">
-                <label className="block text-xs font-bold text-slate-300 mb-2 flex items-center gap-1.5">
-                  <Search className="w-4 h-4 text-rose-400" />
-                  <span>输入任意大A 6 位代码 (覆盖 5,652 支全域代码)</span>
+                <label className="block text-xs font-bold text-slate-300 mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Search className="w-4 h-4 text-rose-400" />
+                    <span>输入名称 / 拼音首字母 / 6位代码 (覆盖 5,652 支全A股票)</span>
+                  </span>
+                  {isSearching && (
+                    <span className="text-[11px] text-rose-400 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> 全网智能检索中...
+                    </span>
+                  )}
                 </label>
                 <div className="relative">
                   <input
                     type="text"
                     value={searchCode}
                     onChange={(e) => setSearchCode(e.target.value)}
-                    placeholder="如 600519 (茅台), 000858 (五粮液), 300750 (宁德时代), 688981 (中芯国际)..."
+                    placeholder="如 赤天化, 宝泰隆, 陕西黑猫, 同仁堂, 大族激光, cth, 600519..."
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono"
                     autoFocus
                   />
@@ -437,55 +478,81 @@ export const MarketUniverseModal: React.FC<MarketUniverseModalProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-slate-400">
-                  <span>热门全域标的快速点选:</span>
+                  <span className="text-slate-500 font-medium">快速查询示例:</span>
                   {[
+                    { code: '600227', name: '赤天化' },
+                    { code: '601011', name: '宝泰隆' },
+                    { code: '601015', name: '陕西黑猫' },
+                    { code: '600085', name: '同仁堂' },
+                    { code: '002008', name: '大族激光' },
                     { code: '600519', name: '贵州茅台' },
                     { code: '601088', name: '中国神华' },
-                    { code: '600036', name: '招商银行' },
-                    { code: '000858', name: '五粮液' },
-                    { code: '000333', name: '美的集团' },
-                    { code: '300750', name: '宁德时代' },
-                    { code: '688981', name: '中芯国际' },
                     { code: '600900', name: '长江电力' }
                   ].map((item) => (
                     <button
                       key={item.code}
-                      onClick={() => setSearchCode(item.code)}
-                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition font-mono"
+                      onClick={() => setSearchCode(item.name)}
+                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition"
                     >
-                      {item.code} {item.name}
+                      {item.name} <span className="font-mono text-slate-500">({item.code})</span>
                     </button>
                   ))}
                 </div>
+
+                {/* 候选列表 (若有多个匹配) */}
+                {smartResults.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-800 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-slate-500">匹配到 {smartResults.length} 只标的:</span>
+                    {smartResults.slice(0, 8).map((r) => (
+                      <button
+                        key={r.code}
+                        onClick={() => handleSelectResultItem(r)}
+                        className={`text-xs px-2 py-1 rounded transition flex items-center gap-1 border ${
+                          activeSelectedStock?.code === r.code
+                            ? 'bg-rose-600 text-white border-rose-500 font-bold'
+                            : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        <span className="font-mono">{r.code}</span>
+                        <span>{r.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* 查询结果卡片 */}
-              {searchedStock ? (
+              {isLoadingActiveStock ? (
+                <div className="p-8 text-center bg-slate-850 rounded-xl border border-slate-800 text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <Loader2 className="w-5 h-5 text-rose-400 animate-spin" />
+                  <span>正在穿透获取实时最新股价与股息财务模型...</span>
+                </div>
+              ) : activeSelectedStock ? (
                 <div className="bg-slate-850 border border-rose-500/40 rounded-xl p-5 shadow-lg space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-700/60">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex flex-col items-center justify-center font-mono">
-                        <span className="text-xs text-slate-400">{searchedStock.market}</span>
-                        <span className="text-sm font-black text-rose-400">{searchedStock.code}</span>
+                        <span className="text-xs text-slate-400">{activeSelectedStock.market}</span>
+                        <span className="text-sm font-black text-rose-400">{activeSelectedStock.code}</span>
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="text-lg font-bold text-slate-100">{searchedStock.name}</h4>
+                          <h4 className="text-lg font-bold text-slate-100">{activeSelectedStock.name}</h4>
                           <span className="text-xs px-2 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700">
-                            {searchedStock.industry}
+                            {activeSelectedStock.industry}
                           </span>
                           <span className="text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30">
-                            {getStockBoard(searchedStock.code)}
+                            {getStockBoard(activeSelectedStock.code)}
                           </span>
                         </div>
                         <p className="text-xs text-slate-400 mt-1 line-clamp-1">
-                          {searchedStock.description}
+                          {activeSelectedStock.description}
                         </p>
                       </div>
                     </div>
 
                     <button
-                      onClick={() => handleOpenStock(searchedStock)}
+                      onClick={() => handleOpenStock(activeSelectedStock)}
                       className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold shadow-md transition flex items-center justify-center gap-1.5 self-start sm:self-auto shrink-0"
                     >
                       <span>打开完整分红档案</span>
@@ -497,33 +564,35 @@ export const MarketUniverseModal: React.FC<MarketUniverseModalProps> = ({
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
                       <div className="text-slate-400 text-[11px] mb-0.5">最新股价</div>
-                      <div className="text-base font-black text-slate-100 font-mono">¥{searchedStock.price.toFixed(2)}</div>
+                      <div className="text-base font-black text-slate-100 font-mono">¥{activeSelectedStock.price.toFixed(2)}</div>
                     </div>
                     <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
                       <div className="text-rose-400 text-[11px] mb-0.5">滚动股息率 (TTM)</div>
-                      <div className="text-base font-black text-rose-400 font-mono">{searchedStock.ttmDividendYield.toFixed(2)}%</div>
+                      <div className="text-base font-black text-rose-400 font-mono">{activeSelectedStock.ttmDividendYield.toFixed(2)}%</div>
                     </div>
                     <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
                       <div className="text-indigo-400 text-[11px] mb-0.5">市盈率 PE / PB</div>
-                      <div className="text-base font-black text-slate-200 font-mono">{searchedStock.pe.toFixed(1)} / {searchedStock.pb.toFixed(2)}</div>
+                      <div className="text-base font-black text-slate-200 font-mono">
+                        {activeSelectedStock.pe > 0 ? activeSelectedStock.pe.toFixed(1) : '-'} / {activeSelectedStock.pb > 0 ? activeSelectedStock.pb.toFixed(2) : '-'}
+                      </div>
                     </div>
                     <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
                       <div className="text-amber-400 text-[11px] mb-0.5">连续分红年限</div>
-                      <div className="text-base font-black text-amber-400 font-mono">{searchedStock.dividendYears} 年</div>
+                      <div className="text-base font-black text-amber-400 font-mono">{activeSelectedStock.dividendYears} 年</div>
                     </div>
                   </div>
 
                   <div className="p-3 bg-slate-900/60 rounded-lg text-xs text-slate-300 border border-slate-800 flex items-center justify-between">
-                    <span>分红护城河亮点：{searchedStock.dividendAdvantage}</span>
+                    <span className="line-clamp-1">分红优势：{activeSelectedStock.dividendAdvantage}</span>
                     <button
                       onClick={() => {
-                        onAddCustomStock([searchedStock]);
-                        setCopiedCode(searchedStock.code);
+                        onAddCustomStock([activeSelectedStock]);
+                        setCopiedCode(activeSelectedStock.code);
                         setTimeout(() => setCopiedCode(null), 2000);
                       }}
                       className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs border border-slate-700 flex items-center gap-1 shrink-0 ml-2"
                     >
-                      {copiedCode === searchedStock.code ? (
+                      {copiedCode === activeSelectedStock.code ? (
                         <>
                           <Check className="w-3 h-3 text-emerald-400" />
                           <span className="text-emerald-400">已载入池</span>
@@ -539,7 +608,7 @@ export const MarketUniverseModal: React.FC<MarketUniverseModalProps> = ({
                 </div>
               ) : searchCode.trim() !== '' ? (
                 <div className="text-center py-8 text-slate-400 text-xs bg-slate-850 rounded-xl border border-slate-800">
-                  请输入有效的 6 位 A 股股票代码（如 600xxx、000xxx、300xxx、688xxx、832xxx）
+                  {isSearching ? '正在全网穿透检索中...' : '未搜到对应 A 股股票，请输入有效股票名称、拼音首字母或 6 位代码'}
                 </div>
               ) : null}
             </div>
