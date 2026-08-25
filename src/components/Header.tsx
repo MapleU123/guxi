@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
 import { AvatarStyle } from './AvatarSelectorModal';
@@ -27,6 +27,9 @@ interface HeaderProps {
   onOpenExportImage: () => void;
   avatarStyle: AvatarStyle;
   onOpenAvatarSelector: () => void;
+  onOpenImportModal: () => void;
+  onOpenMarketUniverse?: () => void;
+  customStocksCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -43,7 +46,10 @@ export const Header: React.FC<HeaderProps> = ({
   onTriggerShock,
   onOpenExportImage,
   avatarStyle,
-  onOpenAvatarSelector
+  onOpenAvatarSelector,
+  onOpenImportModal,
+  onOpenMarketUniverse,
+  customStocksCount = 0
 }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
@@ -102,6 +108,15 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="hidden sm:inline-flex text-[11px] font-semibold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
                     实盘级加权引擎
                   </span>
+                  {onOpenMarketUniverse && (
+                    <button
+                      onClick={onOpenMarketUniverse}
+                      className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 transition"
+                      title="查看大A全市场 5,652 支股票板块分布与分红金字塔"
+                    >
+                      <span>5652支全景</span>
+                    </button>
+                  )}
                 </h1>
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-2">
@@ -181,6 +196,36 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <RefreshCw className={`w-3.5 h-3.5 text-rose-400 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span>{isRefreshing ? '计算中...' : '刷新'}</span>
+            </button>
+
+            {/* Custom Import Stocks Button */}
+            <button
+              onClick={onOpenImportModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-950/40 border border-indigo-500/40 transition active:scale-95"
+              title="自定义导入或添加股票（支持批量粘贴代码列表或手动单只录入）"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>导入股票</span>
+              {customStocksCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-indigo-900 text-indigo-200 text-[10px] font-bold border border-indigo-400/40">
+                  {customStocksCount}
+                </span>
+              )}
+            </button>
+
+            {/* Custom Import Stocks Button */}
+            <button
+              onClick={onOpenImportModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-950/40 border border-indigo-500/40 transition active:scale-95"
+              title="自定义导入或添加股票（支持批量粘贴代码列表或手动单只录入）"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>导入股票</span>
+              {customStocksCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-indigo-900 text-indigo-200 text-[10px] font-bold border border-indigo-400/40">
+                  {customStocksCount}
+                </span>
+              )}
             </button>
 
             {/* Excel Export Button */}

@@ -56,6 +56,7 @@ export interface Stock {
   isDelisted: boolean;              // 是否退市/风险警示
   isLeader: boolean;                // 是否为行业龙头标杆
   isAristocrat: boolean;            // 是否为连续分红>10年红利贵族
+  isCustom?: boolean;               // 是否为用户自定义导入/添加的股票
   
   // 综合得分 (在筛选结果集中动态归一化加权计算)
   normMarketCap?: number;           // 归一化市值分 (0~100)
@@ -88,8 +89,10 @@ export interface FilterCriteria {
   excludeST: boolean;                   // 默认排除 ST / *ST
   excludeDelisted: boolean;             // 默认排除退市整理期
   
-  // 行业分类
+  // 行业与板块分类
   selectedIndustries: string[];         // 选中的行业，空数组表示全部行业
+  selectedMarkets?: ('SH' | 'SZ' | 'BJ')[]; // 沪/深/京交易所筛选
+  selectedBoards?: string[];            // 沪市主板/深市主板/创业板/科创板/北交所筛选
   
   // 质地扩展条件
   minMarketCap: number;                 // 最低市值 (亿元, 0表示不限)
@@ -99,6 +102,7 @@ export interface FilterCriteria {
   
   // 关键词检索
   searchQuery: string;                  // 代码 / 名称 / 拼音
+  searchBypassFilters?: boolean;        // 搜索时是否忽略其他过滤条件 (直接展示命中搜索的标的，默认 true)
 }
 
 export type StockValuationStatus = '低估' | '正常' | '高估';

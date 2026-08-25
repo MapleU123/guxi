@@ -21,8 +21,27 @@ import { DividendAnomalyFloatingAlert } from './components/DividendAnomalyFloati
 import { DividendAlertHistoryModal } from './components/DividendAlertHistoryModal';
 import { ExportImageModal } from './components/ExportImageModal';
 import { AvatarSelectorModal, AvatarStyle } from './components/AvatarSelectorModal';
+import { CustomStockImportModal } from './components/CustomStockImportModal';
+import { MarketUniverseModal } from './components/MarketUniverseModal';
 import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon } from 'lucide-react';
 import { exportToExcel } from './utils/exportExcel';
+
+const CUSTOM_STOCKS_STORAGE_KEY = 'a_share_dividend_custom_stocks';
+
+function loadStoredCustomStocks(): Stock[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_STOCKS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(s => ({ ...s, isCustom: true }));
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load custom stocks from storage', e);
+  }
+  return [];
+}
 
 const DEFAULT_CRITERIA: FilterCriteria = {
   dividendYieldType: 'ttm',
@@ -38,8 +57,14 @@ const DEFAULT_CRITERIA: FilterCriteria = {
 };
 
 export default function App() {
-  // 1. Raw Stock Universe
-  const [stocks, setStocks] = useState<Stock[]>(INITIAL_STOCKS);
+  // 1. Raw Stock Universe (合并内置标的与用户自定义导入标的)
+  const [stocks, setStocks] = useState<Stock[]>(() => {
+    const stored = loadStoredCustomStocks();
+    if (stored.length === 0) return INITIAL_STOCKS;
+    const customCodes = new Set(stored.map(s => s.code));
+    const baseWithoutCustom = INITIAL_STOCKS.filter(s => !customCodes.has(s.code));
+    return [...stored, ...baseWithoutCustom];
+  });
 
   // 2. Filter Criteria
   const [criteria, setCriteria] = useState<FilterCriteria>(DEFAULT_CRITERIA);
@@ -73,6 +98,71 @@ export default function App() {
   const [customExportStocks, setCustomExportStocks] = useState<Stock[] | null>(null);
   const [avatarStyle, setAvatarStyle] = useState<AvatarStyle>('whiteThreeSoldiers');
   const [isAvatarSelectorOpen, setIsAvatarSelectorOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [isMarketUniverseOpen, setIsMarketUniverseOpen] = useState<boolean>(false);
+
+  // Custom Stock Handlers
+  const handleAddCustomStocks = useCallback((newStocks: Stock[]) => {
+    setStocks((prev) => {
+      const newCodes = new Set(newStocks.map(s => s.code));
+      const filteredPrev = prev.filter(s => !newCodes.has(s.code));
+      const combined = [...newStocks, ...filteredPrev];
+      
+      const allCustom = combined.filter(s => s.isCustom);
+      try {
+        localStorage.setItem(CUSTOM_STOCKS_STORAGE_KEY, JSON.stringify(allCustom));
+      } catch (e) {
+        console.error(e);
+      }
+      return combined;
+    });
+  }, []);
+
+  const handleUpdateCustomStock = useCallback((updatedStock: Stock) => {
+    setStocks((prev) => {
+      const next = prev.map(s => s.code === updatedStock.code ? { ...updatedStock, isCustom: true } : s);
+      const allCustom = next.filter(s => s.isCustom);
+      try {
+        localStorage.setItem(CUSTOM_STOCKS_STORAGE_KEY, JSON.stringify(allCustom));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDeleteCustomStock = useCallback((code: string) => {
+    setStocks((prev) => {
+      const baseStock = INITIAL_STOCKS.find(s => s.code === code);
+      let next: Stock[];
+      if (baseStock) {
+        next = prev.map(s => s.code === code ? { ...baseStock, isCustom: false } : s);
+      } else {
+        next = prev.filter(s => s.code !== code);
+      }
+      const allCustom = next.filter(s => s.isCustom);
+      try {
+        localStorage.setItem(CUSTOM_STOCKS_STORAGE_KEY, JSON.stringify(allCustom));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearAllCustomStocks = useCallback(() => {
+    try {
+      localStorage.removeItem(CUSTOM_STOCKS_STORAGE_KEY);
+    } catch (e) {
+      console.error(e);
+    }
+    setStocks(INITIAL_STOCKS);
+  }, []);
+
+  // Count of custom stocks
+  const customStocksCount = useMemo(() => {
+    return stocks.filter(s => s.isCustom).length;
+  }, [stocks]);
 
   // Manual & Auto Refresh Quotes Handler with Anomaly Detection
   const handleRefreshQuotes = useCallback(() => {
@@ -258,6 +348,9 @@ export default function App() {
         }}
         avatarStyle={avatarStyle}
         onOpenAvatarSelector={() => setIsAvatarSelectorOpen(true)}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
+        onOpenMarketUniverse={() => setIsMarketUniverseOpen(true)}
+        customStocksCount={customStocksCount}
       />
 
       {/* Main Container */}
@@ -275,6 +368,7 @@ export default function App() {
           filteredStocks={processedStocks}
           totalStockCount={stocks.length}
           onSelectStock={(stock) => setSelectedStockDetail(stock)}
+          onOpenMarketUniverse={() => setIsMarketUniverseOpen(true)}
         />
 
         {/* Filter Control Panel */}
@@ -283,6 +377,10 @@ export default function App() {
           onChange={setCriteria}
           allStocks={stocks}
           filteredCount={processedStocks.length}
+          onOpenImportModal={() => setIsImportModalOpen(true)}
+          onSelectStock={(stock) => setSelectedStockDetail(stock)}
+          onAddCustomStock={handleAddCustomStocks}
+          onOpenMarketUniverse={() => setIsMarketUniverseOpen(true)}
         />
 
         {/* Stock Result Table */}
@@ -294,6 +392,9 @@ export default function App() {
           selectedStockCodes={selectedStockCodes}
           onToggleSelectStock={handleToggleSelectStock}
           onToggleSelectAll={handleToggleSelectAll}
+          searchQuery={criteria.searchQuery}
+          onClearSearch={() => setCriteria((prev) => ({ ...prev, searchQuery: '' }))}
+          onAddCustomStock={handleAddCustomStocks}
           onOpenExportImage={() => {
             setCustomExportStocks(null);
             setIsExportImageModalOpen(true);
@@ -414,6 +515,28 @@ export default function App() {
         }}
         onSelectStock={handleSelectStockByCode}
         onTriggerShock={handleTriggerShock}
+      />
+
+      {/* Market Universe (大A 5,652 支股票全景透析与全域检索) Modal */}
+      <MarketUniverseModal
+        isOpen={isMarketUniverseOpen}
+        onClose={() => setIsMarketUniverseOpen(false)}
+        allStocks={stocks}
+        filteredCount={processedStocks.length}
+        onSelectStock={(stock) => setSelectedStockDetail(stock)}
+        onAddCustomStock={handleAddCustomStocks}
+        onApplyCriteria={(newCrit) => setCriteria((prev) => ({ ...prev, ...newCrit }))}
+      />
+
+      {/* Custom Stock Import / Batch Add Modal */}
+      <CustomStockImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        existingStocks={stocks}
+        onAddStocks={handleAddCustomStocks}
+        onUpdateStock={handleUpdateCustomStock}
+        onDeleteStock={handleDeleteCustomStock}
+        onClearAllCustom={handleClearAllCustomStocks}
       />
 
     </div>

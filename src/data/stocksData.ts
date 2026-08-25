@@ -1,6 +1,8 @@
 import { Stock } from '../types';
+import { EXPANDED_STOCKS } from './expandedStocks';
+import { COMPREHENSIVE_A_SHARE_DATABASE } from './allASharesDictionary';
 
-export const INITIAL_STOCKS: Stock[] = [
+const BASE_STOCKS: Stock[] = [
   {
     code: '601088',
     name: '中国神华',
@@ -2144,21 +2146,42 @@ export const INITIAL_STOCKS: Stock[] = [
   }
 ];
 
-export const ALL_INDUSTRIES: string[] = [
-  '煤炭',
-  '银行',
-  '公用事业',
-  '石油石化',
-  '交通运输',
-  '家用电器',
-  '建筑装饰',
-  '建筑材料',
-  '钢铁',
-  '通信',
-  '食品饮料',
-  '非银金融',
-  '基础化工',
-  '汽车',
-  '商贸零售',
-  '房地产'
-];
+// 合并基础核心标的、扩充二线标的及全市场知名标的大字典，确保按代码唯一
+const stockMap = new Map<string, Stock>();
+[...BASE_STOCKS, ...EXPANDED_STOCKS, ...COMPREHENSIVE_A_SHARE_DATABASE].forEach((s) => {
+  if (!stockMap.has(s.code)) {
+    stockMap.set(s.code, s);
+  }
+});
+
+export const INITIAL_STOCKS: Stock[] = Array.from(stockMap.values());
+
+// 提取并保证全行业完整覆盖
+export const ALL_INDUSTRIES: string[] = Array.from(
+  new Set([
+    '煤炭',
+    '银行',
+    '公用事业',
+    '石油石化',
+    '交通运输',
+    '家用电器',
+    '建筑装饰',
+    '建筑材料',
+    '钢铁',
+    '通信',
+    '食品饮料',
+    '非银金融',
+    '基础化工',
+    '机械设备',
+    '医药生物',
+    '有色金属',
+    '纺织服饰',
+    '轻工制造',
+    '传媒',
+    '汽车',
+    '商贸零售',
+    '房地产',
+    ...INITIAL_STOCKS.map(s => s.industry)
+  ])
+);
+

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Stock, SortConfig, SortField } from '../types';
 import { calculateBuyOpportunityScore, getStockValuationStatus } from '../utils/calculator';
+import { generateDynamicStockProfile } from '../data/allASharesDictionary';
 
 interface StockTableProps {
   stocks: Stock[];
@@ -16,6 +17,9 @@ interface StockTableProps {
   onToggleSelectStock: (code: string) => void;
   onToggleSelectAll: () => void;
   onOpenExportImage?: () => void;
+  searchQuery?: string;
+  onClearSearch?: () => void;
+  onAddCustomStock?: (stocks: Stock[]) => void;
 }
 
 export const StockTable: React.FC<StockTableProps> = ({
@@ -26,7 +30,10 @@ export const StockTable: React.FC<StockTableProps> = ({
   selectedStockCodes,
   onToggleSelectStock,
   onToggleSelectAll,
-  onOpenExportImage
+  onOpenExportImage,
+  searchQuery,
+  onClearSearch,
+  onAddCustomStock
 }) => {
   const [hoveredScoreStock, setHoveredScoreStock] = useState<string | null>(null);
 
@@ -274,11 +281,51 @@ export const StockTable: React.FC<StockTableProps> = ({
           <tbody className="divide-y divide-slate-800/70 text-slate-200">
             {stocks.length === 0 ? (
               <tr>
-                <td colSpan={16} className="py-12 text-center text-slate-500">
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <Info className="w-8 h-8 text-slate-600" />
-                    <p className="text-sm text-slate-400">未找到符合当前筛选条件的股票</p>
-                    <p className="text-xs text-slate-600">请尝试放宽股息率、PE限制或清空行业过滤条件</p>
+                <td colSpan={16} className="py-14 text-center text-slate-500">
+                  <div className="flex flex-col items-center justify-center gap-3 max-w-md mx-auto">
+                    <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-rose-400">
+                      <Info className="w-6 h-6" />
+                    </div>
+                    {searchQuery && searchQuery.trim() !== '' ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-slate-300">
+                          未在当前筛选视图中找到与 <span className="text-rose-400 font-mono font-bold">"{searchQuery}"</span> 匹配的标的
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          可能原因：该股票代码或名称未收录，或被其他过滤条件（如行业、ST等）排除。
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                          {/^\d{6}$/.test(searchQuery.trim()) && onAddCustomStock && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newStock = generateDynamicStockProfile(searchQuery.trim());
+                                onAddCustomStock([newStock]);
+                                onSelectStock(newStock);
+                              }}
+                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold shadow-md transition flex items-center gap-1.5"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                              <span>一键生成并载入「{searchQuery.trim()}」完整档案</span>
+                            </button>
+                          )}
+                          {onClearSearch && (
+                            <button
+                              type="button"
+                              onClick={onClearSearch}
+                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 transition"
+                            >
+                              清空搜索关键词
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="text-sm text-slate-300 font-medium">未找到符合当前筛选条件的股票</p>
+                        <p className="text-xs text-slate-500">请尝试放宽股息率、PE限制，或切换行业分类条件</p>
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -345,6 +392,11 @@ export const StockTable: React.FC<StockTableProps> = ({
                           {stock.isAristocrat && (
                             <span className="text-[9px] px-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
                               10年贵族
+                            </span>
+                          )}
+                          {stock.isCustom && (
+                            <span className="text-[9px] px-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-medium">
+                              自定义
                             </span>
                           )}
                         </div>

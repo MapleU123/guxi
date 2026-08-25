@@ -70,10 +70,44 @@ export function calculateNormalizedScores(stocks: Stock[]): Stock[] {
 }
 
 /**
+ * 判断股票所属板块（沪市主板、深市主板、创业板、科创板、北交所）
+ */
+export function getStockBoard(code: string): '沪市主板' | '深市主板' | '创业板' | '科创板' | '北交所' {
+  if (code.startsWith('688')) return '科创板';
+  if (code.startsWith('60')) return '沪市主板';
+  if (code.startsWith('30')) return '创业板';
+  if (code.startsWith('00')) return '深市主板';
+  if (code.startsWith('8') || code.startsWith('4') || code.startsWith('92')) return '北交所';
+  return '沪市主板';
+}
+
+/**
  * 根据筛选条件过滤股票
  */
 export function filterStocks(stocks: Stock[], criteria: FilterCriteria): Stock[] {
+  const searchQuery = criteria.searchQuery.trim().toUpperCase();
+  const hasSearch = searchQuery !== '';
+  const bypassWhenSearch = criteria.searchBypassFilters !== false; // 默认搜索时优先直接展示匹配股票
+
   return stocks.filter((stock) => {
+    // 关键词检索 (支持代码、名称、拼音缩写、行业)
+    if (hasSearch) {
+      const matchCode = stock.code.toUpperCase().includes(searchQuery);
+      const matchName = stock.name.toUpperCase().includes(searchQuery);
+      const matchPinyin = stock.pinyin ? stock.pinyin.toUpperCase().includes(searchQuery) : false;
+      const matchIndustry = stock.industry ? stock.industry.toUpperCase().includes(searchQuery) : false;
+      const isMatched = matchCode || matchName || matchPinyin || matchIndustry;
+
+      if (!isMatched) {
+        return false;
+      }
+
+      // 如果开启了“搜索时直通模式”，直接返回匹配结果，防止被股息率/PE/行业等过滤条件拦截
+      if (bypassWhenSearch) {
+        return true;
+      }
+    }
+
     // 1. 排除 ST 股
     if (criteria.excludeST && stock.isST) {
       return false;
@@ -84,7 +118,21 @@ export function filterStocks(stocks: Stock[], criteria: FilterCriteria): Stock[]
       return false;
     }
 
-    // 3. 股息率筛选 (静态 / 滚动TTM / 两者皆满足)
+    // 3. 交易所与板块筛选
+    if (criteria.selectedMarkets && criteria.selectedMarkets.length > 0) {
+      if (!criteria.selectedMarkets.includes(stock.market)) {
+        return false;
+      }
+    }
+
+    if (criteria.selectedBoards && criteria.selectedBoards.length > 0) {
+      const board = getStockBoard(stock.code);
+      if (!criteria.selectedBoards.includes(board)) {
+        return false;
+      }
+    }
+
+    // 4. 股息率筛选 (静态 / 滚动TTM / 两者皆满足)
     if (criteria.dividendYieldType === 'ttm') {
       if (stock.ttmDividendYield < criteria.minDividendYield) return false;
       if (criteria.maxDividendYield !== undefined && stock.ttmDividendYield > criteria.maxDividendYield) return false;
@@ -134,18 +182,6 @@ export function filterStocks(stocks: Stock[], criteria: FilterCriteria): Stock[]
     // 10. 最低净利增速
     if (criteria.minNetProfitGrowth !== undefined && stock.netProfitGrowth < criteria.minNetProfitGrowth) {
       return false;
-    }
-
-    // 11. 关键词检索 (支持代码、名称、拼音缩写)
-    if (criteria.searchQuery.trim() !== '') {
-      const q = criteria.searchQuery.trim().toUpperCase();
-      const matchCode = stock.code.includes(q);
-      const matchName = stock.name.toUpperCase().includes(q);
-      const matchPinyin = stock.pinyin.toUpperCase().includes(q);
-      const matchIndustry = stock.industry.includes(q);
-      if (!matchCode && !matchName && !matchPinyin && !matchIndustry) {
-        return false;
-      }
     }
 
     return true;
