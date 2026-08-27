@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Stock, FilterCriteria, SortConfig, SortField, DividendAnomalyAlert } from './types';
+import { Stock, FilterCriteria, SortConfig, SortField, DividendAnomalyAlert, TargetDividendWatchItem } from './types';
 import { INITIAL_STOCKS } from './data/stocksData';
 import { 
   filterStocks, 
@@ -7,7 +7,8 @@ import {
   simulateRealtimeQuotes, 
   checkDividendYieldAnomalies,
   simulateMarketShock,
-  getStockValuationStatus
+  getStockValuationStatus,
+  calculateTargetDividendProfile
 } from './utils/calculator';
 import { fetchBatchRealtimeQuotes, applyRealtimeQuoteToStock } from './utils/realtimeQuoteService';
 import { Header } from './components/Header';
@@ -24,10 +25,39 @@ import { ExportImageModal } from './components/ExportImageModal';
 import { AvatarSelectorModal, AvatarStyle } from './components/AvatarSelectorModal';
 import { CustomStockImportModal } from './components/CustomStockImportModal';
 import { MarketUniverseModal } from './components/MarketUniverseModal';
-import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon } from 'lucide-react';
+import { TargetWatchlistModal } from './components/TargetWatchlistModal';
+import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon, Target } from 'lucide-react';
 import { exportToExcel } from './utils/exportExcel';
 
 const CUSTOM_STOCKS_STORAGE_KEY = 'a_share_dividend_custom_stocks';
+const TARGET_WATCHLIST_STORAGE_KEY = 'a_share_dividend_target_watchlist_v1';
+
+const DEFAULT_TARGET_WATCHLIST: TargetDividendWatchItem[] = [
+  { code: '601088', name: '中国神华', targetYield: 7.0, targetDividendYield: 7.0, notes: '煤炭现金奶牛，等待理想7%股息率低吸', customNote: '煤炭现金奶牛，等待理想7%股息率低吸', addedAt: '2026-03-01' },
+  { code: '600036', name: '招商银行', targetYield: 6.0, targetDividendYield: 6.0, notes: '零售银行龙头，目标6%股息率分批建仓', customNote: '零售银行龙头，目标6%股息率分批建仓', addedAt: '2026-03-01' },
+  { code: '600900', name: '长江电力', targetYield: 4.5, targetDividendYield: 4.5, notes: '水电大公用事业，理想4.5%股息率配置', customNote: '水电大公用事业，理想4.5%股息率配置', addedAt: '2026-03-01' },
+  { code: '000651', name: '格力电器', targetYield: 6.5, targetDividendYield: 6.5, notes: '家电高股息龙头，目标6.5%股息率', customNote: '家电高股息龙头，目标6.5%股息率', addedAt: '2026-03-01' },
+  { code: '601225', name: '陕西煤业', targetYield: 7.5, targetDividendYield: 7.5, notes: '高分红标杆，关注理想7.5%收益率买点', customNote: '高分红标杆，关注理想7.5%收益率买点', addedAt: '2026-03-01' }
+];
+
+function loadStoredTargetWatchlist(): TargetDividendWatchItem[] {
+  try {
+    const raw = localStorage.getItem(TARGET_WATCHLIST_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((item) => ({
+          ...item,
+          targetYield: item.targetYield ?? item.targetDividendYield ?? 5.0,
+          targetDividendYield: item.targetDividendYield ?? item.targetYield ?? 5.0
+        }));
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load target watchlist from storage', e);
+  }
+  return DEFAULT_TARGET_WATCHLIST;
+}
 
 function loadStoredCustomStocks(): Stock[] {
   try {
@@ -101,6 +131,100 @@ export default function App() {
   const [isAvatarSelectorOpen, setIsAvatarSelectorOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [isMarketUniverseOpen, setIsMarketUniverseOpen] = useState<boolean>(false);
+  const [isTargetWatchlistOpen, setIsTargetWatchlistOpen] = useState<boolean>(false);
+
+  // 8. 理想股息率备选股票池状态
+  const [watchItems, setWatchItems] = useState<TargetDividendWatchItem[]>(() => loadStoredTargetWatchlist());
+
+  // 同步保存备选股票池到 LocalStorage
+  const saveWatchItems = useCallback((items: TargetDividendWatchItem[]) => {
+    setWatchItems(items);
+    try {
+      localStorage.setItem(TARGET_WATCHLIST_STORAGE_KEY, JSON.stringify(items));
+    } catch (e) {
+      console.error('Failed to save target watchlist:', e);
+    }
+  }, []);
+
+  const handleSaveTargetWatchItem = useCallback((item: TargetDividendWatchItem) => {
+    setWatchItems((prev) => {
+      const idx = prev.findIndex(w => w.code === item.code);
+      let next: TargetDividendWatchItem[];
+      if (idx >= 0) {
+        next = [...prev];
+        next[idx] = item;
+      } else {
+        next = [item, ...prev];
+      }
+      try {
+        localStorage.setItem(TARGET_WATCHLIST_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleRemoveTargetWatchItem = useCallback((code: string) => {
+    setWatchItems((prev) => {
+      const next = prev.filter(w => w.code !== code);
+      try {
+        localStorage.setItem(TARGET_WATCHLIST_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleTargetWatchlist = useCallback((stock: Stock) => {
+    setWatchItems((prev) => {
+      const currentList = Array.isArray(prev) ? prev : [];
+      const exists = currentList.some(w => w?.code === stock.code);
+      let next: TargetDividendWatchItem[];
+      if (exists) {
+        next = currentList.filter(w => w?.code !== stock.code);
+      } else {
+        const defaultTargetYield = Math.max(5.0, Number((stock.ttmDividendYield * 1.15).toFixed(1)));
+        next = [
+          {
+            code: stock.code,
+            name: stock.name,
+            targetYield: defaultTargetYield,
+            targetDividendYield: defaultTargetYield,
+            notes: '',
+            customNote: '',
+            addedAt: new Date().toISOString().split('T')[0]
+          },
+          ...currentList
+        ];
+      }
+      try {
+        localStorage.setItem(TARGET_WATCHLIST_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  }, []);
+
+  // 计算备选池中达标的数量
+  const targetReachedCount = useMemo(() => {
+    let count = 0;
+    if (!Array.isArray(watchItems)) return 0;
+    for (const item of watchItems) {
+      if (!item || !item.code) continue;
+      const st = stocks.find(s => s.code === item.code);
+      if (st) {
+        const targetYield = item.targetDividendYield ?? item.targetYield ?? 5.0;
+        const profile = calculateTargetDividendProfile(st, targetYield);
+        if (profile.isReached) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }, [watchItems, stocks]);
 
   // Custom Stock Handlers
   const handleAddCustomStocks = useCallback((newStocks: Stock[]) => {
@@ -377,6 +501,9 @@ export default function App() {
         onOpenImportModal={() => setIsImportModalOpen(true)}
         onOpenMarketUniverse={() => setIsMarketUniverseOpen(true)}
         customStocksCount={customStocksCount}
+        onOpenTargetWatchlist={() => setIsTargetWatchlistOpen(true)}
+        targetWatchlistCount={watchItems.length}
+        targetReachedCount={targetReachedCount}
       />
 
       {/* Main Container */}
@@ -421,6 +548,9 @@ export default function App() {
           searchQuery={criteria.searchQuery}
           onClearSearch={() => setCriteria((prev) => ({ ...prev, searchQuery: '' }))}
           onAddCustomStock={handleAddCustomStocks}
+          targetWatchlistCodes={watchItems.map(w => w.code)}
+          onToggleTargetWatchlist={handleToggleTargetWatchlist}
+          onOpenTargetWatchlist={() => setIsTargetWatchlistOpen(true)}
           onOpenExportImage={() => {
             setCustomExportStocks(null);
             setIsExportImageModalOpen(true);
@@ -432,7 +562,7 @@ export default function App() {
           <div className="flex items-center gap-2 text-slate-300 font-medium">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>
-              已严格执行选股准则：默认剔除ST、*ST及退市整理期风险标的，动态追踪每股分红与盘口现价，当股息率波动超过±10%时实时触发气泡异动预警。
+              已严格执行选股准则：默认剔除ST、*ST及退市整理期风险标的，动态追踪每股分红与盘口现价，支持理想股息率备选池自动倒推目标建仓价与需跌空间。
             </span>
           </div>
           <button
@@ -494,6 +624,20 @@ export default function App() {
         allStocks={stocks}
         onClose={() => setSelectedStockDetail(null)}
         onUpdateStock={handleUpdateCustomStock}
+        targetWatchItem={selectedStockDetail ? watchItems.find(w => w.code === selectedStockDetail.code) : undefined}
+        onSaveTargetWatchItem={handleSaveTargetWatchItem}
+        onRemoveTargetWatchItem={handleRemoveTargetWatchItem}
+      />
+
+      {/* 理想股息率备选股票池 (Target Dividend Watchlist) Modal */}
+      <TargetWatchlistModal
+        isOpen={isTargetWatchlistOpen}
+        onClose={() => setIsTargetWatchlistOpen(false)}
+        allStocks={stocks}
+        watchItems={watchItems}
+        onUpdateWatchItems={saveWatchItems}
+        onSelectStock={(stock) => setSelectedStockDetail(stock)}
+        onAddCustomStock={handleAddCustomStocks}
       />
 
       {/* Export Image Preview & Download Modal */}

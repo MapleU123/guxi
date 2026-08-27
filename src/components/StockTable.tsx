@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   ArrowUpDown, ArrowUp, ArrowDown, Award, TrendingUp, TrendingDown, 
   ExternalLink, ShieldCheck, Flame, Star, Info, ChevronRight, CheckCircle2,
-  Image as ImageIcon, Sparkles
+  Image as ImageIcon, Sparkles, Target
 } from 'lucide-react';
 import { Stock, SortConfig, SortField } from '../types';
 import { calculateBuyOpportunityScore, getStockValuationStatus } from '../utils/calculator';
@@ -20,6 +20,9 @@ interface StockTableProps {
   searchQuery?: string;
   onClearSearch?: () => void;
   onAddCustomStock?: (stocks: Stock[]) => void;
+  targetWatchlistCodes?: string[];
+  onToggleTargetWatchlist?: (stock: Stock) => void;
+  onOpenTargetWatchlist?: () => void;
 }
 
 export const StockTable: React.FC<StockTableProps> = ({
@@ -33,7 +36,10 @@ export const StockTable: React.FC<StockTableProps> = ({
   onOpenExportImage,
   searchQuery,
   onClearSearch,
-  onAddCustomStock
+  onAddCustomStock,
+  targetWatchlistCodes = [],
+  onToggleTargetWatchlist,
+  onOpenTargetWatchlist
 }) => {
   const [hoveredScoreStock, setHoveredScoreStock] = useState<string | null>(null);
 
@@ -68,6 +74,17 @@ export const StockTable: React.FC<StockTableProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenTargetWatchlist && (
+            <button
+              onClick={onOpenTargetWatchlist}
+              className="px-2.5 py-1 rounded text-xs font-semibold bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 border border-amber-500/40 transition flex items-center gap-1 active:scale-95"
+              title="打开理想股息率备选股票池"
+            >
+              <Target className="w-3.5 h-3.5 text-amber-400" />
+              <span>备选池 ({targetWatchlistCodes.length})</span>
+            </button>
+          )}
+
           {onOpenExportImage && (
             <button
               onClick={onOpenExportImage}
@@ -607,13 +624,29 @@ export const StockTable: React.FC<StockTableProps> = ({
 
                     {/* Action Button */}
                     <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => onSelectStock(stock)}
-                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white transition font-medium text-[11px] border border-slate-700 hover:border-rose-500 inline-flex items-center gap-1"
-                      >
-                        <span>分红档案</span>
-                        <ChevronRight className="w-3 h-3" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        {onToggleTargetWatchlist && (
+                          <button
+                            onClick={() => onToggleTargetWatchlist(stock)}
+                            className={`p-1 rounded transition border ${
+                              targetWatchlistCodes.includes(stock.code)
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-300 border-slate-700'
+                            }`}
+                            title={targetWatchlistCodes.includes(stock.code) ? '已在理想股息率备选池，点击移出' : '加入理想股息率备选池'}
+                          >
+                            <Target className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => onSelectStock(stock)}
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white transition font-medium text-[11px] border border-slate-700 hover:border-rose-500 inline-flex items-center gap-1 shrink-0"
+                        >
+                          <span>分红档案</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
                     </td>
 
                   </tr>

@@ -224,3 +224,35 @@ export interface IndustryComparisonResult {
   leaderAdvantageTitle: string;
 }
 
+export interface TargetDividendWatchItem {
+  code: string;
+  name?: string;
+  targetYield?: number;         // 理想目标股息率 %, 例如 5.5, 6.0
+  targetDividendYield?: number; // 兼容别名
+  notes?: string;               // 备选备注
+  customNote?: string;          // 兼容别名
+  addedAt?: string;             // 加入时间
+}
+
+export interface TargetDividendCalculatedStock {
+  stock: Stock;
+  targetYield: number;          // 理想股息率 % (如 5.5%)
+  currentPrice: number;         // 实时现价 (元)
+  currentYield: number;         // 实时滚动股息率 %
+  dividendPerShare: number;     // 每股派息基准 (元/股)
+  dividendBase: number;         // 别名
+  targetPrice: number;          // 目标买入价位 (元) = 每股分红 / (理想股息率/100)
+  dropNeededPercent: number;    // 需跌百分比 % (例如 -15.2% 表示现价需下跌15.2%到达买入价; 0%表示已达标)
+  diffPrice: number;            // 距目标价差额 (现价 - 目标价, 元)
+  isReached: boolean;           // 是否已达标 (现价 <= 目标价)
+  targetPE: number;             // 到达目标价时的市盈率 PE
+  targetMarketCap: number;      // 到达目标价时的总市值 (亿元)
+  status: 'reached' | 'close' | 'moderate' | 'deep';
+  statusLabel: string;
+  statusBadgeColor: {
+    bg: string;
+    text: string;
+    border: string;
+  };
+}
+

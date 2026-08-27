@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus } from 'lucide-react';
+import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
 import { getTradingStatus } from '../utils/realtimeQuoteService';
@@ -31,6 +31,9 @@ interface HeaderProps {
   onOpenImportModal: () => void;
   onOpenMarketUniverse?: () => void;
   customStocksCount?: number;
+  onOpenTargetWatchlist?: () => void;
+  targetWatchlistCount?: number;
+  targetReachedCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -50,7 +53,10 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAvatarSelector,
   onOpenImportModal,
   onOpenMarketUniverse,
-  customStocksCount = 0
+  customStocksCount = 0,
+  onOpenTargetWatchlist,
+  targetWatchlistCount = 0,
+  targetReachedCount = 0
 }) => {
   const tradingInfo = getTradingStatus();
 
@@ -206,6 +212,27 @@ export const Header: React.FC<HeaderProps> = ({
               <RefreshCw className={`w-3.5 h-3.5 text-rose-400 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span>{isRefreshing ? '同步实盘中...' : '同步今日真实行情'}</span>
             </button>
+
+            {/* 理想股息率备选股票池 Button */}
+            {onOpenTargetWatchlist && (
+              <button
+                onClick={onOpenTargetWatchlist}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-950/30 transition active:scale-95 group"
+                title="打开理想股息率备选股票池（根据理想股息率实时计算目标价位与需跌空间）"
+              >
+                <Target className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-45 transition duration-300" />
+                <span>备选股票池</span>
+                {targetReachedCount > 0 ? (
+                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-500 text-white font-mono text-[10px] font-bold animate-pulse" title={`${targetReachedCount} 只标的已进入目标买入价`}>
+                    {targetReachedCount}已达标
+                  </span>
+                ) : targetWatchlistCount > 0 ? (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500/30 text-amber-200 font-mono text-[10px] font-bold border border-amber-400/40">
+                    {targetWatchlistCount}
+                  </span>
+                ) : null}
+              </button>
+            )}
 
             {/* Custom Import Stocks Button */}
             <button

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   X, Award, Percent, DollarSign, Calendar, TrendingUp, ShieldCheck, 
   Calculator, Landmark, ChevronRight, BarChart2, PieChart, Sparkles, Activity,
-  RefreshCw, Clock, Zap, ArrowUpRight, ArrowDownRight, CheckCircle2
+  RefreshCw, Clock, Zap, ArrowUpRight, ArrowDownRight, CheckCircle2, Target, Check, Trash2
 } from 'lucide-react';
-import { Stock } from '../types';
+import { Stock, TargetDividendWatchItem } from '../types';
+import { calculateTargetDividendProfile } from '../utils/calculator';
 import { PEValuationChart } from './PEValuationChart';
 import { BuyOpportunityIndicator } from './BuyOpportunityIndicator';
 import { IndustryComparisonRadar } from './IndustryComparisonRadar';
@@ -16,9 +17,20 @@ interface StockDetailModalProps {
   allStocks?: Stock[];
   onClose: () => void;
   onUpdateStock?: (updated: Stock) => void;
+  targetWatchItem?: TargetDividendWatchItem;
+  onSaveTargetWatchItem?: (item: TargetDividendWatchItem) => void;
+  onRemoveTargetWatchItem?: (code: string) => void;
 }
 
-export const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, allStocks, onClose, onUpdateStock }) => {
+export const StockDetailModal: React.FC<StockDetailModalProps> = ({ 
+  stock, 
+  allStocks, 
+  onClose, 
+  onUpdateStock,
+  targetWatchItem,
+  onSaveTargetWatchItem,
+  onRemoveTargetWatchItem
+}) => {
   if (!stock) return null;
 
   const [currentStock, setCurrentStock] = useState<Stock>(stock);
@@ -29,6 +41,14 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, allSt
 
   const [investmentAmount, setInvestmentAmount] = useState<number>(100000); // 默认投资10万元
   const [holdingYears, setHoldingYears] = useState<number>(5); // 模拟持有年数
+
+  // 理想股息率建仓测算状态
+  const initialTargetYield = (targetWatchItem?.targetDividendYield ?? targetWatchItem?.targetYield) 
+    ? (targetWatchItem?.targetDividendYield ?? targetWatchItem?.targetYield ?? 5.0) 
+    : Math.max(5.0, Number((stock.ttmDividendYield * 1.15).toFixed(1)));
+  const [idealYield, setIdealYield] = useState<number>(initialTargetYield);
+  const [notes, setNotes] = useState<string>(targetWatchItem?.notes || targetWatchItem?.customNote || '');
+  const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
   const tradingInfo = getTradingStatus();
 
@@ -61,6 +81,14 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, allSt
     handleRefreshRealtime();
   }, [stock.code]);
 
+  useEffect(() => {
+    if (targetWatchItem) {
+      const ty = targetWatchItem.targetDividendYield ?? targetWatchItem.targetYield ?? 5.0;
+      setIdealYield(ty);
+      setNotes(targetWatchItem.notes || targetWatchItem.customNote || '');
+    }
+  }, [targetWatchItem]);
+
   // 计算投资回报
   const shares = Math.floor(investmentAmount / (currentStock.price || 1));
   const actualInvestment = shares * currentStock.price;
@@ -72,6 +100,29 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, allSt
   const yieldRate = currentStock.ttmDividendYield / 100;
   const compoundFutureValue = actualInvestment * Math.pow(1 + yieldRate, holdingYears);
   const totalDividendsEarned = compoundFutureValue - actualInvestment;
+
+  // 计算理想股息率目标价与需跌百分比
+  const targetProfile = calculateTargetDividendProfile(currentStock, idealYield);
+
+  const handleSaveToWatchlist = () => {
+    if (onSaveTargetWatchItem) {
+      onSaveTargetWatchItem({
+        code: currentStock.code,
+        name: currentStock.name,
+        targetDividendYield: idealYield,
+        notes: notes.trim(),
+        addedAt: targetWatchItem?.addedAt || new Date().toISOString().split('T')[0]
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2000);
+    }
+  };
+
+  const handleRemoveFromWatchlist = () => {
+    if (onRemoveTargetWatchItem) {
+      onRemoveTargetWatchItem(currentStock.code);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -434,6 +485,199 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, allSt
               </div>
 
             </div>
+          </div>
+
+          {/* Ideal Dividend Target Price & Drop Percentage Calculator Card */}
+          <div className="p-4 sm:p-5 rounded-xl bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/40 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+              <div>
+                <h4 className="text-sm font-bold text-amber-300 flex items-center gap-2">
+                  <Target className="w-4 h-4 text-amber-400" />
+                  理想股息率备选测算 (目标买入价 & 需跌空间)
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  设定你心目中的理想股息回报率，自动根据每股真实分红 (¥{targetProfile.dividendBase.toFixed(3)}/股) 倒推目标低吸价位与下行幅度
+                </p>
+              </div>
+
+              {targetWatchItem && (
+                <span className="self-start sm:self-auto px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-medium text-[10px] flex items-center gap-1">
+                  <Check className="w-3 h-3 text-amber-400" />
+                  已在备选股票池
+                </span>
+              )}
+            </div>
+
+            {/* Target Yield Slider and Presets */}
+            <div className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 mb-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-slate-200">理想股息率要求:</label>
+                  <div className="flex items-center">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1.0"
+                      max="30.0"
+                      value={idealYield}
+                      onChange={(e) => setIdealYield(Math.max(0.5, Number(e.target.value)))}
+                      className="w-20 bg-slate-900 text-amber-300 font-mono font-bold rounded-lg px-2.5 py-1 text-sm border border-amber-500/40 text-right focus:outline-none focus:border-amber-400"
+                    />
+                    <span className="text-amber-300 font-bold ml-1">%</span>
+                  </div>
+                </div>
+
+                {/* Preset Quick Buttons */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-slate-500 mr-1">快捷设定:</span>
+                  {[4.5, 5.0, 5.5, 6.0, 7.0, 8.0].map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => setIdealYield(preset)}
+                      className={`px-2 py-1 rounded text-xs font-mono font-semibold border transition ${
+                        idealYield === preset
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold'
+                          : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-500/50 hover:text-amber-300'
+                      }`}
+                    >
+                      {preset.toFixed(1)}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Range Slider */}
+              <input
+                type="range"
+                min="2.0"
+                max="15.0"
+                step="0.1"
+                value={idealYield}
+                onChange={(e) => setIdealYield(Number(e.target.value))}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              />
+            </div>
+
+            {/* Calculated Output Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 mb-4">
+              
+              <div>
+                <span className="text-slate-400 text-[11px]">现价 vs 每股分红</span>
+                <div className="font-mono font-bold text-slate-200 text-sm mt-0.5">
+                  ¥{currentStock.price.toFixed(2)}
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  分红: ¥{targetProfile.dividendBase.toFixed(3)} / 股
+                </span>
+              </div>
+
+              <div>
+                <span className="text-slate-400 text-[11px]">目标建仓买入价</span>
+                <div className="font-mono font-bold text-amber-300 text-base mt-0.5">
+                  ¥{targetProfile.targetPrice.toFixed(2)}
+                </div>
+                <span className="text-[10px] text-amber-400/80">
+                  倒推公式: ¥{targetProfile.dividendBase.toFixed(2)} ÷ {idealYield}%
+                </span>
+              </div>
+
+              <div>
+                <span className="text-slate-400 text-[11px]">需跌空间 / 偏离度</span>
+                <div className={`font-mono font-bold text-sm mt-0.5 flex items-center gap-1 ${
+                  targetProfile.isReached 
+                    ? 'text-emerald-400' 
+                    : targetProfile.dropNeededPercent <= -20 
+                    ? 'text-rose-400' 
+                    : 'text-amber-300'
+                }`}>
+                  {targetProfile.isReached ? (
+                    <>
+                      <ArrowUpRight className="w-4 h-4 text-emerald-400" />
+                      <span>无需下跌 (已超标)</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownRight className="w-4 h-4 text-rose-400" />
+                      <span>{targetProfile.dropNeededPercent.toFixed(1)}%</span>
+                    </>
+                  )}
+                </div>
+                <span className="text-[10px] text-slate-500">
+                  {targetProfile.isReached 
+                    ? `现价买入即得 ${currentStock.ttmDividendYield.toFixed(2)}%` 
+                    : `距目标价还差 ¥${(currentStock.price - targetProfile.targetPrice).toFixed(2)}`}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-slate-400 text-[11px]">达标状态判断</span>
+                <div className="mt-1">
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                    targetProfile.status === 'reached'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : targetProfile.status === 'close'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                  }`}>
+                    {targetProfile.statusLabel}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-1">
+                  {targetProfile.status === 'reached' ? '当前价已满足买入条件' : '建议在备选池跟踪等待回调'}
+                </span>
+              </div>
+
+            </div>
+
+            {/* Note and Action Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="添加备选策略备注 (如: 跌破30元开始分批建仓、等待中报分红确认等)..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full bg-slate-950 text-slate-200 text-xs rounded-lg px-3 py-2 border border-slate-800 focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {targetWatchItem && onRemoveTargetWatchItem && (
+                  <button
+                    onClick={handleRemoveFromWatchlist}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-rose-600/30 text-rose-400 border border-slate-700 hover:border-rose-500 transition flex items-center gap-1.5"
+                    title="从备选股票池中移除"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>移出备选池</span>
+                  </button>
+                )}
+
+                {onSaveTargetWatchItem && (
+                  <button
+                    onClick={handleSaveToWatchlist}
+                    className={`px-4 py-2 rounded-lg text-xs font-semibold shadow-md transition flex items-center gap-1.5 active:scale-95 ${
+                      savedSuccess
+                        ? 'bg-emerald-600 text-white border border-emerald-400'
+                        : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950 font-bold border border-amber-400/50'
+                    }`}
+                  >
+                    {savedSuccess ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-white" />
+                        <span>已保存至备选池</span>
+                      </>
+                    ) : (
+                      <>
+                        <Target className="w-4 h-4" />
+                        <span>{targetWatchItem ? '更新备选目标' : '加入备选股票池'}</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+
           </div>
 
           {/* Historical Dividends Table */}

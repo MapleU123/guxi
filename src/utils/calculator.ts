@@ -1,4 +1,13 @@
-import { Stock, FilterCriteria, BuyOpportunityEvaluation, IndustryComparisonResult, IndustryRadarDimension, FiveYearPEValuationCushion } from '../types';
+import { 
+  Stock, 
+  FilterCriteria, 
+  BuyOpportunityEvaluation, 
+  IndustryComparisonResult, 
+  IndustryRadarDimension, 
+  FiveYearPEValuationCushion,
+  TargetDividendWatchItem,
+  TargetDividendCalculatedStock
+} from '../types';
 import { INITIAL_STOCKS } from '../data/stocksData';
 
 /**
@@ -1024,5 +1033,112 @@ export function getStockValuationStatus(stock: Stock): StockValuationInfo {
       reason: `近5年PE分位 ${percentile}% · 处于合理中枢 · 现金流稳健`
     };
   }
+}
+
+/**
+ * 备选股票池核心测算：
+ * 根据股票现价、每股分红与用户设定的理想股息率，精准计算目标买入价位、需跌百分比及估值中枢
+ * 
+ * 核心公式：
+ * 目标价位 = 每股派息金额 / (理想股息率 / 100)
+ * 需跌百分比 = (目标价位 - 现价) / 现价 * 100
+ */
+export function calculateTargetDividendProfile(
+  stock: Stock, 
+  targetYieldOrItem: number | TargetDividendWatchItem
+): TargetDividendCalculatedStock {
+  const targetYield = typeof targetYieldOrItem === 'number' 
+    ? targetYieldOrItem 
+    : (targetYieldOrItem.targetDividendYield ?? targetYieldOrItem.targetYield ?? 5.0);
+
+  const currentPrice = stock.price || 0.01;
+  const currentYield = stock.ttmDividendYield > 0 ? stock.ttmDividendYield : stock.staticDividendYield;
+  
+  // 确定每股派息金额基准 (优先使用 TTM 滚动派息，次选上年度分红)
+  let dividendPerShare = stock.ttmDividendPerShare > 0 ? stock.ttmDividendPerShare : stock.lastYearDividendPerShare;
+  if (dividendPerShare <= 0 && currentYield > 0) {
+    dividendPerShare = Number(((currentPrice * currentYield) / 100).toFixed(4));
+  }
+  if (dividendPerShare <= 0) {
+    dividendPerShare = 0.05; // 兜底微量
+  }
+
+  // 目标买入价位 = 每股派息 / (理想股息率 / 100)
+  const safeTargetYield = Math.max(0.1, Number(targetYield) || 5.0);
+  const targetPrice = Number((dividendPerShare / (safeTargetYield / 100)).toFixed(2));
+  
+  // 需跌百分比 = (目标价 - 现价) / 现价 * 100
+  // 例如现价 20，目标价 16 -> (16 - 20) / 20 * 100 = -20.0%
+  // 若现价 15，目标价 16 -> 现价 <= 目标价 (已达标且折价买入)
+  const isReached = currentPrice <= targetPrice;
+  const dropNeededPercent = Number((((targetPrice - currentPrice) / currentPrice) * 100).toFixed(2));
+  const diffPrice = Number((currentPrice - targetPrice).toFixed(2));
+
+  // 估算目标估值与市值
+  const priceRatio = currentPrice > 0 ? targetPrice / currentPrice : 1;
+  const targetPE = stock.pe > 0 ? Number((stock.pe * priceRatio).toFixed(1)) : 0;
+  const targetMarketCap = stock.marketCap > 0 ? Number((stock.marketCap * priceRatio).toFixed(1)) : 0;
+
+  // 状态与颜色判定
+  let status: 'reached' | 'close' | 'moderate' | 'deep' = 'moderate';
+  let statusLabel = '需回调 5%~15%';
+  let statusBadgeColor = {
+    bg: 'bg-amber-500/15',
+    text: 'text-amber-400',
+    border: 'border-amber-500/30'
+  };
+
+  if (isReached) {
+    status = 'reached';
+    const surplus = targetPrice > 0 ? (((targetPrice - currentPrice) / currentPrice) * 100).toFixed(1) : '0';
+    statusLabel = Number(surplus) > 0.5 ? `🎯 已达标 (折价 ${surplus}%)` : '🎯 已达标 (现价可买)';
+    statusBadgeColor = {
+      bg: 'bg-emerald-500/20',
+      text: 'text-emerald-300',
+      border: 'border-emerald-500/40'
+    };
+  } else if (dropNeededPercent >= -5.0) {
+    status = 'close';
+    statusLabel = `⚠️ 差 ${Math.abs(dropNeededPercent).toFixed(1)}% 即达标`;
+    statusBadgeColor = {
+      bg: 'bg-orange-500/20',
+      text: 'text-orange-300',
+      border: 'border-orange-500/40'
+    };
+  } else if (dropNeededPercent >= -15.0) {
+    status = 'moderate';
+    statusLabel = `需跌 ${Math.abs(dropNeededPercent).toFixed(1)}%`;
+    statusBadgeColor = {
+      bg: 'bg-amber-500/15',
+      text: 'text-amber-400',
+      border: 'border-amber-500/30'
+    };
+  } else {
+    status = 'deep';
+    statusLabel = `需深跌 ${Math.abs(dropNeededPercent).toFixed(1)}%`;
+    statusBadgeColor = {
+      bg: 'bg-slate-800',
+      text: 'text-slate-400',
+      border: 'border-slate-700'
+    };
+  }
+
+  return {
+    stock,
+    targetYield: safeTargetYield,
+    currentPrice,
+    currentYield,
+    dividendPerShare,
+    dividendBase: dividendPerShare,
+    targetPrice,
+    dropNeededPercent,
+    diffPrice,
+    isReached,
+    targetPE,
+    targetMarketCap,
+    status,
+    statusLabel,
+    statusBadgeColor
+  };
 }
 
