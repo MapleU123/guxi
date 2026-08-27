@@ -78,10 +78,10 @@ export const StockTable: React.FC<StockTableProps> = ({
             <button
               onClick={onOpenTargetWatchlist}
               className="px-2.5 py-1 rounded text-xs font-semibold bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 border border-amber-500/40 transition flex items-center gap-1 active:scale-95"
-              title="打开理想股息率备选股票池"
+              title="打开备选股票池，按理想股息率测算当前筛选标的的目标买入价与需跌百分比"
             >
               <Target className="w-3.5 h-3.5 text-amber-400" />
-              <span>备选池 ({targetWatchlistCodes.length})</span>
+              <span>备选池目标价测算 ({stocks.length})</span>
             </button>
           )}
 

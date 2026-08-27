@@ -634,10 +634,15 @@ export default function App() {
         isOpen={isTargetWatchlistOpen}
         onClose={() => setIsTargetWatchlistOpen(false)}
         allStocks={stocks}
+        filteredStocks={processedStocks}
+        criteria={criteria}
         watchItems={watchItems}
         onUpdateWatchItems={saveWatchItems}
         onSelectStock={(stock) => setSelectedStockDetail(stock)}
         onAddCustomStock={handleAddCustomStocks}
+        avatarStyle={avatarStyle}
+        onRefreshQuotes={handleRefreshQuotes}
+        isRefreshing={isRefreshing}
       />
 
       {/* Export Image Preview & Download Modal */}
