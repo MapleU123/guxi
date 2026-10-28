@@ -112,7 +112,6 @@ export function parseClientTencentQuote(line: string): RealtimeQuote | null {
  */
 export async function fetchRealtimeQuote(code: string): Promise<RealtimeQuote | null> {
   const formattedCode = formatCodeWithPrefix(code);
-  const cleanCode = code.replace(/\D/g, '');
 
   // 1. 优先调用后端 Express 代理服务
   try {
@@ -124,20 +123,20 @@ export async function fetchRealtimeQuote(code: string): Promise<RealtimeQuote | 
       }
     }
   } catch (err) {
-    console.warn('Backend quote API failed, trying direct quote fallback...', err);
+    // 后端代理遇到网络抖动
   }
 
-  // 2. 降级直连
+  // 2. 降级直连尝试 (部分浏览器或客户端支持直连)，安全捕获失败避免阻断业务
   try {
-    const res = await fetch(`https://qt.gtimg.cn/q=${formattedCode}`);
-    if (res.ok) {
+    const res = await fetch(`https://qt.gtimg.cn/q=${formattedCode}`, { mode: 'cors' }).catch(() => null);
+    if (res && res.ok) {
       const buffer = await res.arrayBuffer();
       const text = new TextDecoder('gbk').decode(buffer);
       const quote = parseClientTencentQuote(text);
       if (quote) return quote;
     }
-  } catch (err) {
-    console.error('Direct quote fetch failed:', err);
+  } catch {
+    // 跨域或网络受限时静默降级为模拟行情
   }
 
   return null;
@@ -156,36 +155,42 @@ export async function fetchBatchRealtimeQuotes(codes: string[]): Promise<Record<
   const chunkSize = 80;
   for (let i = 0; i < cleanCodes.length; i += chunkSize) {
     const batch = cleanCodes.slice(i, i + chunkSize);
+    let chunkSucceeded = false;
+
+    // 1. 优先调用后端 Express 代理路由 /api/quotes
     try {
       const res = await fetch(`/api/quotes?codes=${batch.join(',')}`);
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
           Object.assign(results, json.data);
+          chunkSucceeded = true;
           continue;
         }
       }
-    } catch (err) {
-      console.warn('Batch fetch chunk via API failed, fallback to direct...', err);
+    } catch {
+      // API 请求发生异常
     }
 
-    // Direct fallback for this chunk
-    try {
-      const formattedBatch = batch.map(formatCodeWithPrefix);
-      const res = await fetch(`https://qt.gtimg.cn/q=${formattedBatch.join(',')}`);
-      if (res.ok) {
-        const buffer = await res.arrayBuffer();
-        const text = new TextDecoder('gbk').decode(buffer);
-        const lines = text.trim().split(';').filter((l) => l.trim().length > 0);
-        for (const line of lines) {
-          const q = parseClientTencentQuote(line);
-          if (q && q.code) {
-            results[q.code] = q;
+    // 2. 若后端代理未获取到，尝试直接请求客户端源 (若客户端因跨域报错则安全捕获，不抛出异常)
+    if (!chunkSucceeded) {
+      try {
+        const formattedBatch = batch.map(formatCodeWithPrefix);
+        const res = await fetch(`https://qt.gtimg.cn/q=${formattedBatch.join(',')}`, { mode: 'cors' }).catch(() => null);
+        if (res && res.ok) {
+          const buffer = await res.arrayBuffer();
+          const text = new TextDecoder('gbk').decode(buffer);
+          const lines = text.trim().split(';').filter((l) => l.trim().length > 0);
+          for (const line of lines) {
+            const q = parseClientTencentQuote(line);
+            if (q && q.code) {
+              results[q.code] = q;
+            }
           }
         }
+      } catch {
+        // 静默捕获，上层会自动降级使用真实基准或微波动模拟行情
       }
-    } catch (err) {
-      console.error('Direct batch fetch failed for chunk:', err);
     }
   }
 

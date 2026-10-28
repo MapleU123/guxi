@@ -5,6 +5,7 @@ import { fetchRealtimeQuote, applyRealtimeQuoteToStock, RealtimeQuote } from './
 export interface SearchResultItem {
   code: string;
   name: string;
+  industry?: string;
   pinyin?: string;
   market: 'SH' | 'SZ' | 'BJ';
   type?: string;
@@ -34,11 +35,13 @@ export async function searchAllAShares(
   localStocks.forEach((s) => {
     const matchCode = s.code.toUpperCase().includes(upperQ);
     const matchName = s.name.toUpperCase().includes(upperQ);
+    const matchAlias = s.alias ? s.alias.toUpperCase().includes(upperQ) : false;
     const matchPinyin = s.pinyin ? s.pinyin.toUpperCase().includes(upperQ) : false;
-    if (matchCode || matchName || matchPinyin) {
+    if (matchCode || matchName || matchAlias || matchPinyin) {
       resultMap.set(s.code, {
         code: s.code,
         name: s.name,
+        industry: s.industry,
         pinyin: s.pinyin,
         market: s.market,
         existsInLocalPool: true,
@@ -52,11 +55,13 @@ export async function searchAllAShares(
     if (!resultMap.has(s.code)) {
       const matchCode = s.code.toUpperCase().includes(upperQ);
       const matchName = s.name.toUpperCase().includes(upperQ);
+      const matchAlias = s.alias ? s.alias.toUpperCase().includes(upperQ) : false;
       const matchPinyin = s.pinyin ? s.pinyin.toUpperCase().includes(upperQ) : false;
-      if (matchCode || matchName || matchPinyin) {
+      if (matchCode || matchName || matchAlias || matchPinyin) {
         resultMap.set(s.code, {
           code: s.code,
           name: s.name,
+          industry: s.industry,
           pinyin: s.pinyin,
           market: s.market,
           existsInLocalPool: localStocks.some((ls) => ls.code === s.code),

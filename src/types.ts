@@ -23,9 +23,40 @@ export interface PEHistoryPoint {
   price: number;            // 对应月末收盘价 (元)
 }
 
+export interface YearlyDividendPoint {
+  year: number;             // 年份
+  yearLabel: string;        // 年份标签 e.g. "2023年"
+  dividendPerShare: number; // 每股派息 (元)
+  dividendYield: number;    // 当年股息率 (%)
+  payoutRatio: number;      // 股利支付率 (%)
+  cashTotal: number;        // 分红总额 (亿元)
+  scheme: string;           // 派息方案
+  growthRate?: number;      // 每股派息同比增速 (%)
+}
+
+export interface DividendSustainabilityEvaluation {
+  points: YearlyDividendPoint[];
+  threeYearAvgYield: number;       // 近3年平均股息率 (%)
+  threeYearAvgPayoutRatio: number; // 近3年平均股利支付率 (%)
+  dpsCAGR: number;                 // 近3年每股分红复合年均增长率 CAGR (%)
+  consecutiveYears: number;        // 连续分红年数
+  stabilityScore: number;          // 稳定性得分 0~100
+  sustainabilityGrade: 'S' | 'A' | 'B' | 'C'; // 评级: S卓越 / A良好 / B周期 / C警惕
+  gradeLabel: string;              // 卓越稳健 / 稳健良好 / 周期波动 / 需警惕
+  gradeColor: string;              // 样式
+  payoutHealthStatus: 'healthy' | 'overpaid' | 'underpaid'; // 健康 / 激进透支 / 偏低
+  diagnosisItems: {
+    title: string;
+    status: 'good' | 'warning' | 'neutral';
+    desc: string;
+  }[];
+  expertSummary: string;
+}
+
 export interface Stock {
   code: string;             // 股票代码, e.g. "600036"
   name: string;             // 股票简称, e.g. "招商银行"
+  alias?: string;           // 别名/常用曾用名/简称, e.g. "华能蒙电,招行"
   pinyin: string;           // 拼音简写, e.g. "ZSYH"
   industry: string;         // 申万一级行业, e.g. "银行"
   market: 'SH' | 'SZ' | 'BJ';// 交易所
@@ -45,6 +76,8 @@ export interface Stock {
   
   // 估值与财务指标
   pe: number;                       // 市盈率 (PE-TTM)
+  pePercentile?: number;            // 近5年PE历史分位数 % (0~100, 越低越低估便宜)
+  pePercentile1Y?: number;          // 近1年PE历史分位数 %
   pb: number;                       // 市净率 (PB)
   marketCap: number;                // 总市值 (亿元)
   roe: number;                      // 净资产收益率 (ROE, %)
@@ -112,6 +145,7 @@ export type SortField =
   | 'ttmDividendYield'
   | 'staticDividendYield'
   | 'pe'
+  | 'pePercentile'
   | 'pb'
   | 'valuation'
   | 'marketCap'
@@ -234,6 +268,28 @@ export interface TargetDividendWatchItem {
   addedAt?: string;             // 加入时间
 }
 
+export interface RobustBuySafetyProfile {
+  safeBuyPrice: number;            // 三维加权稳妥买入安全价 (元)
+  isSafeReached: boolean;          // 现价是否已落入稳妥买入区间 (现价 <= 稳妥安全价)
+  safeDropNeededPercent: number;   // 距稳妥买入价需跌空间 %
+  safetyMarginScore: number;       // 综合安全边际指数 (0~100)
+  cushionGradeLabel: string;       // 估值安全垫等级 (如: 极厚安全垫·5年极限底)
+  threeAnchors: {
+    dividendAnchorPrice: number;   // 锚点1: 理想股息率目标现金流价 (元)
+    peFloorAnchorPrice: number;    // 锚点2: 5年PE历史20%极低分位估值底价 (元)
+    pbAssetAnchorPrice: number;    // 锚点3: 资产净资产PB安全锚价 (元)
+  };
+  sustainabilityGrade: 'S' | 'A' | 'B' | 'C'; // 分红可持续性评级 (防范高息陷阱)
+  sustainabilityLabel: string;
+  verdictTag: string;              // 简评结论 (如: 双底共振·极佳安全买点)
+  verdictDescription: string;      // 深度量化逻辑解读
+  threeTranches: {
+    observePrice: number;          // 第一档·底仓观察价 (建立20%~30%底仓)
+    comfortPrice: number;          // 第二档·舒适加仓价 (核心建仓40%~50%)
+    extremePrice: number;          // 第三档·极限重仓价 (极限防御20%~30%)
+  };
+}
+
 export interface TargetDividendCalculatedStock {
   stock: Stock;
   targetYield: number;          // 理想股息率 % (如 5.5%)
@@ -254,5 +310,7 @@ export interface TargetDividendCalculatedStock {
     text: string;
     border: string;
   };
+  // 新增：三维加权「稳妥买入安全价」量化档案
+  robustProfile?: RobustBuySafetyProfile;
 }
 

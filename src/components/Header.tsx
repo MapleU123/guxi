@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target } from 'lucide-react';
+import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
 import { getTradingStatus } from '../utils/realtimeQuoteService';
@@ -34,6 +34,8 @@ interface HeaderProps {
   onOpenTargetWatchlist?: () => void;
   targetWatchlistCount?: number;
   targetReachedCount?: number;
+  onOpenPortfolioDrawer?: () => void;
+  portfolioCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -56,7 +58,9 @@ export const Header: React.FC<HeaderProps> = ({
   customStocksCount = 0,
   onOpenTargetWatchlist,
   targetWatchlistCount = 0,
-  targetReachedCount = 0
+  targetReachedCount = 0,
+  onOpenPortfolioDrawer,
+  portfolioCount = 0
 }) => {
   const tradingInfo = getTradingStatus();
 
@@ -231,6 +235,23 @@ export const Header: React.FC<HeaderProps> = ({
                     {targetWatchlistCount}
                   </span>
                 ) : null}
+              </button>
+            )}
+
+            {/* 组合模拟测算 (右侧栏) Button */}
+            {onOpenPortfolioDrawer && (
+              <button
+                onClick={onOpenPortfolioDrawer}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-rose-600/20 to-amber-600/20 hover:from-rose-600/30 hover:to-amber-600/30 text-rose-300 border border-rose-500/40 shadow-sm transition active:scale-95 group"
+                title="打开右侧栏：高股息组合现金流与配置模拟器"
+              >
+                <PieChart className="w-3.5 h-3.5 text-rose-400 group-hover:rotate-45 transition duration-300" />
+                <span>组合模拟器</span>
+                {portfolioCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-mono text-[10px] font-bold">
+                    {portfolioCount}
+                  </span>
+                )}
               </button>
             )}
 

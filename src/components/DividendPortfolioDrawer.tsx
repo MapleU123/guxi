@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, PieChart, DollarSign, Calendar, TrendingUp, Download, Trash2, Plus, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, PieChart, DollarSign, Calendar, TrendingUp, Download, Trash2, Plus, Sparkles, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
 import { Stock } from '../types';
 import * as XLSX from 'xlsx';
 
@@ -9,6 +9,9 @@ interface DividendPortfolioDrawerProps {
   selectedStocks: Stock[];
   onRemoveStock: (code: string) => void;
   onClearAll: () => void;
+  onAddPresetStocks?: () => void;
+  onAddAllFiltered?: () => void;
+  filteredCount?: number;
 }
 
 export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = ({
@@ -16,32 +19,46 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
   onClose,
   selectedStocks,
   onRemoveStock,
-  onClearAll
+  onClearAll,
+  onAddPresetStocks,
+  onAddAllFiltered,
+  filteredCount = 0
 }) => {
   const [totalCapital, setTotalCapital] = useState<number>(500000); // 默认50万总资金
 
+  // 监听 ESC 键关闭抽屉
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
-  // 等权重分配资金
-  const stockCount = selectedStocks.length;
+  // 过滤有效标的，避免任何异常对象
+  const validStocks = selectedStocks.filter(s => Boolean(s && s.code));
+  const stockCount = validStocks.length;
   const weightPerStock = stockCount > 0 ? 1 / stockCount : 0;
   const capitalPerStock = stockCount > 0 ? totalCapital / stockCount : 0;
 
-  // 组合加权指标
+  // 组合加权指标（高度防错处理，杜绝 NaN 或 undefined 抛错）
   const portfolioYield = stockCount > 0
-    ? selectedStocks.reduce((acc, s) => acc + s.ttmDividendYield * weightPerStock, 0)
+    ? validStocks.reduce((acc, s) => acc + (Number(s.ttmDividendYield) || 0) * weightPerStock, 0)
     : 0;
 
   const portfolioStaticYield = stockCount > 0
-    ? selectedStocks.reduce((acc, s) => acc + s.staticDividendYield * weightPerStock, 0)
+    ? validStocks.reduce((acc, s) => acc + (Number(s.staticDividendYield) || 0) * weightPerStock, 0)
     : 0;
 
   const portfolioPE = stockCount > 0
-    ? selectedStocks.reduce((acc, s) => acc + s.pe * weightPerStock, 0)
+    ? validStocks.reduce((acc, s) => acc + (Number(s.pe) || 0) * weightPerStock, 0)
     : 0;
 
   const portfolioROE = stockCount > 0
-    ? selectedStocks.reduce((acc, s) => acc + s.roe * weightPerStock, 0)
+    ? validStocks.reduce((acc, s) => acc + (Number(s.roe) || 0) * weightPerStock, 0)
     : 0;
 
   const annualTotalDividend = (totalCapital * (portfolioYield / 100));
@@ -49,12 +66,14 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
 
   // 导出组合方案
   const handleExportPortfolio = () => {
-    if (selectedStocks.length === 0) return;
+    if (validStocks.length === 0) return;
 
-    const data = selectedStocks.map((s, idx) => {
+    const data = validStocks.map((s, idx) => {
       const allocatedMoney = capitalPerStock;
-      const shares = Math.floor(allocatedMoney / s.price);
-      const estAnnualDiv = shares * s.ttmDividendPerShare;
+      const stockPrice = Math.max(0.01, Number(s.price) || 1);
+      const shares = Math.floor(allocatedMoney / stockPrice);
+      const divPerShare = Number(s.ttmDividendPerShare) || (stockPrice * ((Number(s.ttmDividendYield) || 0) / 100));
+      const estAnnualDiv = shares * divPerShare;
 
       return {
         '序号': idx + 1,
@@ -64,10 +83,10 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
         '配置权重': (weightPerStock * 100).toFixed(1) + '%',
         '拟分配金额(元)': allocatedMoney.toFixed(0),
         '建议买入股数': shares,
-        '现价(元)': s.price.toFixed(2),
-        '滚动股息率TTM(%)': s.ttmDividendYield.toFixed(2) + '%',
-        '静态股息率(%)': s.staticDividendYield.toFixed(2) + '%',
-        '市盈率PE': s.pe.toFixed(1),
+        '现价(元)': stockPrice.toFixed(2),
+        '滚动股息率TTM(%)': (Number(s.ttmDividendYield) || 0).toFixed(2) + '%',
+        '静态股息率(%)': (Number(s.staticDividendYield) || 0).toFixed(2) + '%',
+        '市盈率PE': (Number(s.pe) || 0).toFixed(1),
         '预计年分红(元)': estAnnualDiv.toFixed(1),
         '龙头综合分': s.leaderScore ?? '-'
       };
@@ -76,12 +95,20 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, '高股息组合配置方案');
-    XLSX.writeFile(workbook, `A股高股息组合方案_${totalCapital / 10000}万元_共${stockCount}只.xlsx`);
+    XLSX.writeFile(workbook, `A股高股息组合方案_${(totalCapital / 10000).toFixed(0)}万元_共${stockCount}只.xlsx`);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-slate-900 border-l border-slate-700 w-full max-w-xl h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-300">
+    <div 
+      className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div 
+        className="bg-slate-900 border-l border-slate-700 w-full max-w-xl h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-300"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="p-4 sm:p-5 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
@@ -92,17 +119,18 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
             <div>
               <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
                 高股息投资组合模拟器
-                <span className="text-xs bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded border border-rose-500/30">
+                <span className="text-xs bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded border border-rose-500/30 font-mono">
                   已选 {stockCount} 只
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">测算一揽子红利股票的组合现金流与收益</p>
+              <p className="text-xs text-slate-400">测算一揽子红利资产的组合现金流与配置收益</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition"
+            title="关闭右侧栏 (ESC)"
           >
             <X className="w-5 h-5" />
           </button>
@@ -129,16 +157,20 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
                   <button
                     key={amt}
                     onClick={() => setTotalCapital(amt)}
-                    className={`px-2.5 py-1.5 rounded text-xs font-medium border ${
+                    className={`px-2.5 py-1.5 rounded text-xs font-medium border transition ${
                       totalCapital === amt
                         ? 'bg-rose-600 text-white border-rose-500'
-                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750'
                     }`}
                   >
                     {amt / 10000}万
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="text-[11px] text-slate-400 flex items-center justify-between mt-1">
+              <span>单只平均配置: <strong className="text-slate-200 font-mono">¥{(stockCount > 0 ? capitalPerStock : 0).toFixed(0)}</strong></span>
+              <span>配置方式: <span className="text-emerald-400 font-medium">等权重均衡分散</span></span>
             </div>
           </div>
 
@@ -195,41 +227,72 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
             </div>
 
             {stockCount === 0 ? (
-              <div className="p-8 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
-                <p className="text-slate-400 text-xs">暂未勾选任何股票</p>
-                <p className="text-slate-500 text-[11px] mt-1">
-                  在主表格左侧勾选股票即可加入组合进行测算
-                </p>
+              <div className="p-6 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800 space-y-4">
+                <div className="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto text-slate-500">
+                  <PieChart className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-slate-300 text-sm font-semibold">暂未加入任何组合标的</p>
+                  <p className="text-slate-500 text-xs mt-1">
+                    在主选股表格勾选股票，或点击下方快捷按钮快速载入优质组合：
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-1 max-w-sm mx-auto">
+                  {onAddPresetStocks && (
+                    <button
+                      onClick={onAddPresetStocks}
+                      className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 active:scale-95"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>一键预置 5 只高分红核心标杆</span>
+                    </button>
+                  )}
+                  {onAddAllFiltered && filteredCount > 0 && (
+                    <button
+                      onClick={onAddAllFiltered}
+                      className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs transition flex items-center justify-center gap-2 active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>将当前主表已筛选的 {filteredCount} 只股票全部加入</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                {selectedStocks.map((stock) => {
-                  const shares = Math.floor(capitalPerStock / stock.price);
-                  const annualDiv = shares * stock.ttmDividendPerShare;
+              <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+                {validStocks.map((stock) => {
+                  const stockPrice = Math.max(0.01, Number(stock.price) || 1);
+                  const shares = Math.floor(capitalPerStock / stockPrice);
+                  const divPerShare = Number(stock.ttmDividendPerShare) || (stockPrice * ((Number(stock.ttmDividendYield) || 0) / 100));
+                  const annualDiv = shares * divPerShare;
 
                   return (
                     <div
                       key={stock.code}
-                      className="p-3 bg-slate-800/60 rounded-xl border border-slate-700 flex items-center justify-between"
+                      className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/80 hover:border-slate-600 transition flex items-center justify-between"
                     >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-100 text-sm">{stock.name}</span>
-                          <span className="font-mono text-slate-400 text-xs">{stock.code}</span>
+                      <div className="flex-1 min-w-0 pr-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-100 text-sm truncate">{stock.name}</span>
+                          <span className="font-mono text-slate-400 text-xs bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">
+                            {stock.code}
+                          </span>
                           <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-700 text-slate-300">
                             {stock.industry}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-3">
-                          <span>股息率: <strong className="text-rose-400">{stock.ttmDividendYield.toFixed(2)}%</strong></span>
-                          <span>拟买: <strong className="text-slate-200">{shares}股</strong></span>
-                          <span>年红利: <strong className="text-emerald-400">¥{annualDiv.toFixed(0)}</strong></span>
+                        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-3 flex-wrap">
+                          <span>股息率: <strong className="text-rose-400 font-mono">{(Number(stock.ttmDividendYield) || 0).toFixed(2)}%</strong></span>
+                          <span>拟买: <strong className="text-slate-200 font-mono">{shares}股</strong></span>
+                          <span>年分红: <strong className="text-emerald-400 font-mono">¥{annualDiv.toFixed(0)}</strong></span>
+                          <span>PE: <strong className="text-slate-300 font-mono">{Number(stock.pe) > 0 ? (Number(stock.pe)).toFixed(1) : '-'}</strong></span>
                         </div>
                       </div>
 
                       <button
                         onClick={() => onRemoveStock(stock.code)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0"
                         title="从组合移除"
                       >
                         <X className="w-4 h-4" />
@@ -244,23 +307,27 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
         </div>
 
         {/* Footer */}
-        {stockCount > 0 && (
-          <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
+        <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3">
+          {stockCount > 0 ? (
             <button
               onClick={handleExportPortfolio}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold text-xs shadow-md hover:from-emerald-500 hover:to-teal-500 transition"
+              className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold text-xs shadow-md hover:from-emerald-500 hover:to-teal-500 transition active:scale-95"
             >
               <Download className="w-3.5 h-3.5" />
-              导出组合配置 Excel
+              导出组合配置 Excel ({stockCount}只)
             </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-medium hover:bg-slate-700 transition"
-            >
-              关闭
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="text-xs text-slate-500">
+              提示：可勾选多只股票进行模拟测算
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-medium hover:bg-slate-700 transition"
+          >
+            关闭抽屉
+          </button>
+        </div>
 
       </div>
     </div>

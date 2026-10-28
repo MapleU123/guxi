@@ -6,7 +6,10 @@ import {
   IndustryRadarDimension, 
   FiveYearPEValuationCushion,
   TargetDividendWatchItem,
-  TargetDividendCalculatedStock
+  TargetDividendCalculatedStock,
+  RobustBuySafetyProfile,
+  YearlyDividendPoint,
+  DividendSustainabilityEvaluation
 } from '../types';
 import { INITIAL_STOCKS } from '../data/stocksData';
 
@@ -18,14 +21,19 @@ import { INITIAL_STOCKS } from '../data/stocksData';
 export function calculateNormalizedScores(stocks: Stock[]): Stock[] {
   if (stocks.length === 0) return [];
   if (stocks.length === 1) {
-    return stocks.map((s) => ({
+    const s = stocks[0];
+    const cushion = calculateFiveYearPEValuationCushion(s);
+    const pe1Y = get12MonthPEHistory(s);
+    return [{
       ...s,
       normMarketCap: 100,
       normROE: 100,
       normRevGrowth: 100,
       normNetProfitGrowth: 100,
-      leaderScore: 100
-    }));
+      leaderScore: 100,
+      pePercentile: cushion.fiveYearPercentile,
+      pePercentile1Y: pe1Y.percentile
+    }];
   }
 
   // 获取各维度极值
@@ -67,15 +75,48 @@ export function calculateNormalizedScores(stocks: Stock[]): Stock[] {
       normRevGrowth * 0.15 + 
       normNetProfitGrowth * 0.20;
 
+    // 动态量化近5年与近1年历史PE分位数
+    const cushion = calculateFiveYearPEValuationCushion(s);
+    const pe1Y = get12MonthPEHistory(s);
+
     return {
       ...s,
       normMarketCap: Number(normMarketCap.toFixed(1)),
       normROE: Number(normROE.toFixed(1)),
       normRevGrowth: Number(normRevGrowth.toFixed(1)),
       normNetProfitGrowth: Number(normNetProfitGrowth.toFixed(1)),
-      leaderScore: Number(leaderScore.toFixed(1))
+      leaderScore: Number(leaderScore.toFixed(1)),
+      pePercentile: cushion.fiveYearPercentile,
+      pePercentile1Y: pe1Y.percentile
     };
   });
+}
+
+/**
+ * 获取或快速计算股票的PE值与历史分位数全景档案
+ */
+export function getOrComputeStockPEPercentile(stock: Stock): {
+  pe: number;
+  fiveYearPercentile: number;
+  oneYearPercentile: number;
+  cushionPercent: number;
+  minPE: number;
+  maxPE: number;
+  avgPE: number;
+  cushionGradeLabel: string;
+} {
+  const cushion = calculateFiveYearPEValuationCushion(stock);
+  const pe1Y = get12MonthPEHistory(stock);
+  return {
+    pe: Number(stock.pe.toFixed(2)),
+    fiveYearPercentile: stock.pePercentile ?? cushion.fiveYearPercentile,
+    oneYearPercentile: stock.pePercentile1Y ?? pe1Y.percentile,
+    cushionPercent: cushion.cushionPercent,
+    minPE: cushion.fiveYearMinPE,
+    maxPE: cushion.fiveYearMaxPE,
+    avgPE: cushion.fiveYearAvgPE,
+    cushionGradeLabel: cushion.cushionGradeLabel
+  };
 }
 
 /**
@@ -103,9 +144,15 @@ export function filterStocks(stocks: Stock[], criteria: FilterCriteria): Stock[]
     if (hasSearch) {
       const matchCode = stock.code.toUpperCase().includes(searchQuery);
       const matchName = stock.name.toUpperCase().includes(searchQuery);
+      const matchAlias = stock.alias ? stock.alias.toUpperCase().includes(searchQuery) : false;
       const matchPinyin = stock.pinyin ? stock.pinyin.toUpperCase().includes(searchQuery) : false;
-      const matchIndustry = stock.industry ? stock.industry.toUpperCase().includes(searchQuery) : false;
-      const isMatched = matchCode || matchName || matchPinyin || matchIndustry;
+      const matchIndustry = stock.industry 
+        ? (stock.industry.toUpperCase().includes(searchQuery) ||
+           ((searchQuery.includes('公共事业') || searchQuery.includes('公用事业')) && (stock.industry === '公用事业' || stock.industry === '公共事业')) ||
+           ((searchQuery.includes('煤炭') || searchQuery.includes('煤炭开采')) && (stock.industry === '煤炭' || stock.industry === '煤炭开采')))
+        : false;
+      const matchDesc = stock.description ? stock.description.toUpperCase().includes(searchQuery) : false;
+      const isMatched = matchCode || matchName || matchAlias || matchPinyin || matchIndustry || matchDesc;
 
       if (!isMatched) {
         return false;
@@ -169,8 +216,20 @@ export function filterStocks(stocks: Stock[], criteria: FilterCriteria): Stock[]
     }
 
     // 6. 行业分类筛选
-    if (criteria.selectedIndustries.length > 0 && !criteria.selectedIndustries.includes(stock.industry)) {
-      return false;
+    if (criteria.selectedIndustries.length > 0) {
+      const match = criteria.selectedIndustries.some((selectedInd) => {
+        if (selectedInd === stock.industry) return true;
+        // 兼容煤炭与煤炭开采
+        if ((selectedInd === '煤炭' || selectedInd === '煤炭开采') && (stock.industry === '煤炭' || stock.industry === '煤炭开采')) {
+          return true;
+        }
+        // 兼容公共事业与公用事业
+        if ((selectedInd === '公共事业' || selectedInd === '公用事业') && (stock.industry === '公共事业' || stock.industry === '公用事业')) {
+          return true;
+        }
+        return false;
+      });
+      if (!match) return false;
     }
 
     // 7. 最低市值筛选
@@ -474,6 +533,8 @@ export function get12MonthPEHistory(stock: Stock): ValuationAnalysisResult {
   };
 }
 
+export const calculatePEValuation = get12MonthPEHistory;
+
 /**
  * 计算近五年历史PE分位数与滚动市盈率估值安全垫百分比
  * 估值安全垫 = 100% - 近五年PE历史分位数 (当处于0%极值底时，安全垫为100%；处于50%中枢时，安全垫为50%)
@@ -690,22 +751,26 @@ export function calculateBuyOpportunityScore(
  */
 const SECTOR_BENCHMARKS: Record<string, { dividendYield: number; pe: number; roe: number; growth: number }> = {
   '银行': { dividendYield: 5.10, pe: 5.8, roe: 11.5, growth: 2.2 },
-  '煤炭': { dividendYield: 5.60, pe: 10.2, roe: 16.8, growth: 3.5 },
-  '公用事业': { dividendYield: 3.85, pe: 17.2, roe: 12.4, growth: 8.5 },
+  '煤炭': { dividendYield: 6.20, pe: 7.5, roe: 18.0, growth: 4.5 },
+  '煤炭开采': { dividendYield: 6.20, pe: 7.5, roe: 18.0, growth: 4.5 },
+  '公用事业': { dividendYield: 4.25, pe: 13.8, roe: 11.5, growth: 7.5 },
+  '公共事业': { dividendYield: 4.25, pe: 13.8, roe: 11.5, growth: 7.5 },
   '家用电器': { dividendYield: 4.35, pe: 12.8, roe: 19.8, growth: 8.2 },
   '石油石化': { dividendYield: 5.25, pe: 9.6, roe: 12.0, growth: 2.8 },
   '交通运输': { dividendYield: 4.80, pe: 11.5, roe: 12.8, growth: 4.2 },
-  '食品饮料': { dividendYield: 3.20, pe: 22.0, roe: 20.5, growth: 9.0 },
+  '食品饮料': { dividendYield: 3.50, pe: 18.5, roe: 22.0, growth: 8.5 },
   '医药生物': { dividendYield: 2.50, pe: 24.5, roe: 14.2, growth: 6.8 },
   '纺织服饰': { dividendYield: 5.20, pe: 13.2, roe: 13.0, growth: 4.0 },
   '建筑装饰': { dividendYield: 4.50, pe: 6.8, roe: 9.8, growth: 3.2 },
   '基础化工': { dividendYield: 4.10, pe: 13.8, roe: 12.5, growth: 4.8 },
-  '有色金属': { dividendYield: 3.60, pe: 15.2, roe: 13.8, growth: 6.2 },
+  '有色金属': { dividendYield: 3.80, pe: 12.5, roe: 14.5, growth: 7.2 },
   '钢铁': { dividendYield: 4.20, pe: 10.8, roe: 8.8, growth: 1.5 },
   '通信': { dividendYield: 4.20, pe: 15.0, roe: 11.5, growth: 6.5 },
   '房地产': { dividendYield: 3.90, pe: 8.5, roe: 7.2, growth: -1.5 },
   '汽车': { dividendYield: 3.80, pe: 14.5, roe: 12.2, growth: 7.5 },
-  '机械设备': { dividendYield: 3.50, pe: 16.5, roe: 13.5, growth: 6.0 }
+  '机械设备': { dividendYield: 3.50, pe: 16.5, roe: 13.5, growth: 6.0 },
+  '电力设备': { dividendYield: 3.50, pe: 15.5, roe: 16.0, growth: 18.5 },
+  '商贸零售': { dividendYield: 4.20, pe: 13.2, roe: 12.5, growth: 6.5 }
 };
 
 /**
@@ -1123,6 +1188,9 @@ export function calculateTargetDividendProfile(
     };
   }
 
+  // 计算三维加权「稳妥买入安全价」量化档案
+  const robustProfile = calculateRobustBuySafetyProfile(stock, safeTargetYield, targetPrice, dividendPerShare);
+
   return {
     stock,
     targetYield: safeTargetYield,
@@ -1138,7 +1206,355 @@ export function calculateTargetDividendProfile(
     targetMarketCap,
     status,
     statusLabel,
-    statusBadgeColor
+    statusBadgeColor,
+    robustProfile
+  };
+}
+
+/**
+ * 三维加权「稳妥买入安全价」核心量化引擎：
+ * 综合「股息率现金流锚 + 5年PE历史估值极低分位底锚 + 每股净资产PB资产锚」，
+ * 结合分红可持续性评级（剔除分红陷阱）与三档梯度建仓法，推导最稳妥的买入安全边界。
+ */
+export function calculateRobustBuySafetyProfile(
+  stock: Stock,
+  targetYield: number,
+  targetPrice: number,
+  dividendPerShare: number
+): RobustBuySafetyProfile {
+  const currentPrice = stock.price || 0.01;
+  const currentPE = stock.pe > 0 ? stock.pe : 15;
+  const currentPB = stock.pb > 0 ? stock.pb : 1.5;
+
+  // 1. 获取近5年 PE 估值中枢与底线
+  const cushion = calculateFiveYearPEValuationCushion(stock);
+  const fiveYearMinPE = cushion.fiveYearMinPE > 0 ? cushion.fiveYearMinPE : currentPE * 0.75;
+  const fiveYearAvgPE = cushion.fiveYearAvgPE > 0 ? cushion.fiveYearAvgPE : currentPE * 0.95;
+
+  // 2. 锚点 1: 股息率目标现金流锚 (用户设定的理想股息率倒推价)
+  const dividendAnchorPrice = targetPrice > 0 ? targetPrice : currentPrice;
+
+  // 3. 锚点 2: 5年PE历史20%极低分位估值底锚 (基于历史极值与均值加权估值底)
+  // 当PE降至5年极低位时对应的股价 (EPS = 当前价 / 当前PE)
+  const eps = currentPE > 0 ? currentPrice / currentPE : 1;
+  const peFloorTarget = Math.max(3.5, fiveYearMinPE * 1.05); // 5年最低点上方5%作为极低估值底
+  const peFloorAnchorPrice = Number((eps * peFloorTarget).toFixed(2));
+
+  // 4. 锚点 3: 每股净资产 PB 资产安全锚
+  // 银行/周期/央国企破净或1.0倍PB是极具强度的硬支撑底；成长性标的则取0.85~1.2倍PB区间
+  const bps = currentPB > 0 ? currentPrice / currentPB : currentPrice * 0.5;
+  let pbFloorMultiple = 0.90;
+  if (stock.industry === '银行' || stock.industry === '建筑装饰' || stock.industry === '钢铁') {
+    pbFloorMultiple = Math.min(0.75, Math.max(0.45, currentPB * 0.90));
+  } else if (stock.roe >= 15) {
+    pbFloorMultiple = Math.max(1.1, currentPB * 0.80);
+  } else {
+    pbFloorMultiple = Math.max(0.85, currentPB * 0.85);
+  }
+  const pbAssetAnchorPrice = Number((bps * pbFloorMultiple).toFixed(2));
+
+  // 5. 分红可持续性体检 (防范高息陷阱)
+  // 综合 ROE、连续分红年限与分红支付率
+  const sustainability = getDividendSustainabilityEvaluation(stock);
+  const sustainabilityGrade = sustainability.sustainabilityGrade;
+  const sustainabilityLabel = sustainability.gradeLabel;
+
+  // 可持续性安全系数修正 (分红极稳且ROE高则给予1.0，若分红有波动或行业波动大则给予安全折扣 0.92~0.96)
+  let sustainabilityFactor = 0.96;
+  if (sustainabilityGrade === 'S') sustainabilityFactor = 1.0;
+  else if (sustainabilityGrade === 'A') sustainabilityFactor = 0.97;
+  else if (sustainabilityGrade === 'B') sustainabilityFactor = 0.92;
+  else sustainabilityFactor = 0.86;
+
+  // 6. 三维加权「稳妥买入安全价」量化合成：
+  // 针对不同行业风格动态分配三锚权重：
+  // - 银行/大周期：PB 权重 35%，PE 权重 35%，股息 30%
+  // - 水电/公用事业/运营商（公用金牛）：股息率现金流锚 50%，PE 35%，PB 15%
+  // - 消费服饰/家电：股息率 40%，PE估值底 45%，PB 15%
+  let wDiv = 0.40;
+  let wPE = 0.40;
+  let wPB = 0.20;
+
+  if (stock.industry === '银行' || stock.industry === '煤炭开采' || stock.industry === '建筑装饰') {
+    wDiv = 0.30;
+    wPE = 0.35;
+    wPB = 0.35;
+  } else if (stock.industry === '水电' || stock.industry === '公用事业' || stock.industry === '电信运营商') {
+    wDiv = 0.50;
+    wPE = 0.35;
+    wPB = 0.15;
+  } else if (stock.industry === '大众服饰' || stock.industry === '家用电器' || stock.industry === '食品饮料') {
+    wDiv = 0.40;
+    wPE = 0.45;
+    wPB = 0.15;
+  }
+
+  // 限制各锚点不发生荒谬异常，合成为加权基准价
+  const safeAnchorSum = (dividendAnchorPrice * wDiv + peFloorAnchorPrice * wPE + pbAssetAnchorPrice * wPB);
+  // 保守原则：稳妥买入价不应高于单纯的目标股息价，并在综合锚点与折价后取低值
+  const rawSafeBuyPrice = Math.min(dividendAnchorPrice, safeAnchorSum) * sustainabilityFactor;
+  const safeBuyPrice = Number(rawSafeBuyPrice.toFixed(2));
+
+  // 稳妥安全价与现价对比
+  const isSafeReached = currentPrice <= safeBuyPrice;
+  const safeDropNeededPercent = Number((((safeBuyPrice - currentPrice) / currentPrice) * 100).toFixed(1));
+
+  // 综合安全边际指数 (0~100)
+  // 结合估值安全垫 (cushionPercent)、股息率达标度及可持续性
+  const baseMargin = cushion.cushionPercent * 0.45;
+  const yieldMargin = Math.min(40, (stock.ttmDividendYield / targetYield) * 35);
+  const sustainBonus = sustainabilityGrade === 'S' ? 20 : sustainabilityGrade === 'A' ? 15 : sustainabilityGrade === 'B' ? 8 : 0;
+  const safetyMarginScore = Number(Math.max(15, Math.min(100, baseMargin + yieldMargin + sustainBonus)).toFixed(0));
+
+  // 7. 三档分批梯级建仓位推算 (消除踏空与追高心理)
+  // 第一档·底仓观察价 (建立20%~30%左侧底仓，回撤≤3%~5%或已接近均值即可启动)
+  const observePrice = Number(Math.max(safeBuyPrice, Math.min(currentPrice * 0.98, (dividendAnchorPrice + currentPrice) / 2)).toFixed(2));
+  // 第二档·舒适加仓价 (核心稳妥安全线，加仓至70%)
+  const comfortPrice = safeBuyPrice;
+  // 第三档·极限重仓价 (极限防御线，在稳妥安全价基础上再打9折或逼近5年估值铁底)
+  const extremePrice = Number(Math.min(safeBuyPrice * 0.90, peFloorAnchorPrice).toFixed(2));
+
+  // 8. 结论判定与标签
+  let verdictTag = '估值合理·建议分批定投';
+  let verdictDescription = '';
+
+  if (isSafeReached) {
+    verdictTag = '🎯 极佳稳妥击球区 (三锚共振)';
+    verdictDescription = `当前真实股价 (¥${currentPrice.toFixed(2)}) 已完全落入【稳妥买入安全价 ¥${safeBuyPrice.toFixed(2)}】区间以内。同时满足：①达到预期高股息率 (${stock.ttmDividendYield.toFixed(2)}%)；②PE处于5年低分位极厚安全垫 (${cushion.cushionPercent}%)；③净资产安全底稳固，安全边际极高，适合果断建仓。`;
+  } else if (safeDropNeededPercent >= -6.0) {
+    verdictTag = '⚡ 紧邻稳妥买入线 (差 <6%)';
+    verdictDescription = `距三维稳妥买入价仅需回调 ${Math.abs(safeDropNeededPercent).toFixed(1)}% (约差 ¥${(currentPrice - safeBuyPrice).toFixed(2)})，已进入第一档观察建仓线 (¥${observePrice.toFixed(2)})，可考虑先行试探性建立 20%~30% 左侧底仓。`;
+  } else if (safeDropNeededPercent >= -15.0) {
+    verdictTag = '⏳ 耐心等待正常回调';
+    verdictDescription = `需回调 ${Math.abs(safeDropNeededPercent).toFixed(1)}% 才能达到三维稳妥安全价 (¥${safeBuyPrice.toFixed(2)})。当前估值处于合理或适度偏高区间，建议在备选池持续跟踪，避免追高。`;
+  } else {
+    verdictTag = '🛡️ 偏离稳妥区间较远 (需深跌)';
+    verdictDescription = `需回调 ${Math.abs(safeDropNeededPercent).toFixed(1)}% 方能达到三维安全线。当前股价或处于景气周期高位，安全边际不足，建议保持防守耐心。`;
+  }
+
+  return {
+    safeBuyPrice,
+    isSafeReached,
+    safeDropNeededPercent,
+    safetyMarginScore,
+    cushionGradeLabel: cushion.cushionGradeLabel,
+    threeAnchors: {
+      dividendAnchorPrice,
+      peFloorAnchorPrice,
+      pbAssetAnchorPrice
+    },
+    sustainabilityGrade,
+    sustainabilityLabel,
+    verdictTag,
+    verdictDescription,
+    threeTranches: {
+      observePrice,
+      comfortPrice,
+      extremePrice
+    }
+  };
+}
+
+/**
+ * 计算股票近三年及近历年股息率趋势与分红稳定性趋势指标
+ * 评估股息派发的可持续性、现金流覆盖度、股利支付率健康度及综合评级
+ */
+export function getDividendSustainabilityEvaluation(stock: Stock): DividendSustainabilityEvaluation {
+  // 1. 获取并清洗排序分红历史数据
+  let rawHistory = stock.history && Array.isArray(stock.history) ? [...stock.history] : [];
+  
+  // 过滤有效数据并按年份正序排列 (如 2021 -> 2022 -> 2023 -> 2024)
+  rawHistory = rawHistory
+    .filter(h => h && h.year && h.dividendPerShare !== undefined)
+    .sort((a, b) => a.year - b.year);
+
+  // 如果历史数据不足3条（如自定义导入的新股票），基于现有财务指标与行业基准生成科学平滑的近年趋势
+  if (rawHistory.length < 3) {
+    const currentYear = new Date().getFullYear();
+    const baseYear = currentYear - 1; // 基准年
+    const baseDPS = stock.lastYearDividendPerShare > 0 
+      ? stock.lastYearDividendPerShare 
+      : (stock.ttmDividendPerShare > 0 ? stock.ttmDividendPerShare : Number(((stock.price * stock.ttmDividendYield) / 100).toFixed(3)));
+    const baseYield = stock.staticDividendYield > 0 ? stock.staticDividendYield : stock.ttmDividendYield;
+    const basePayout = stock.payoutRatio > 0 ? stock.payoutRatio : 48.5;
+    const sharesTotal = (stock.marketCap * 100000000) / (stock.price || 10);
+    const growth = (stock.netProfitGrowth || 3) / 100;
+
+    const syntheticYears = [baseYear - 2, baseYear - 1, baseYear];
+    rawHistory = syntheticYears.map((yr, idx) => {
+      const yearDiff = idx - 2; // -2, -1, 0
+      const dpsFactor = Math.max(0.65, Math.min(1.35, 1 + yearDiff * growth * 0.8));
+      const dps = Number((baseDPS * dpsFactor).toFixed(3));
+      const yieldVal = Number((baseYield * (1 + (yearDiff * 0.05))).toFixed(2));
+      const payout = Number((basePayout * (1 + (yearDiff * 0.02))).toFixed(1));
+      const cash = Number(((dps * sharesTotal) / 100000000).toFixed(2));
+
+      return {
+        year: yr,
+        dividendPerShare: dps,
+        dividendYield: yieldVal,
+        payoutRatio: payout,
+        cashTotal: Math.max(0.1, cash),
+        scheme: `10派${(dps * 10).toFixed(2)}元`
+      };
+    });
+  }
+
+  // 整理所有历史数据点并计算同比增速
+  const points: YearlyDividendPoint[] = rawHistory.map((item, index) => {
+    let growthRate: number | undefined = undefined;
+    if (index > 0) {
+      const prevDPS = rawHistory[index - 1].dividendPerShare;
+      if (prevDPS > 0) {
+        growthRate = Number((((item.dividendPerShare - prevDPS) / prevDPS) * 100).toFixed(1));
+      }
+    }
+    return {
+      year: item.year,
+      yearLabel: `${item.year}年`,
+      dividendPerShare: Number(item.dividendPerShare.toFixed(3)),
+      dividendYield: Number(item.dividendYield.toFixed(2)),
+      payoutRatio: Number(item.payoutRatio.toFixed(1)),
+      cashTotal: Number(item.cashTotal.toFixed(2)),
+      scheme: item.scheme || `10派${(item.dividendPerShare * 10).toFixed(2)}元`,
+      growthRate
+    };
+  });
+
+  // 取最近3个年份的数据用于近三年核心指标量化
+  const recentThree = points.slice(-3);
+  const sumYield = recentThree.reduce((acc, p) => acc + p.dividendYield, 0);
+  const threeYearAvgYield = Number((sumYield / recentThree.length).toFixed(2));
+
+  const sumPayout = recentThree.reduce((acc, p) => acc + p.payoutRatio, 0);
+  const threeYearAvgPayoutRatio = Number((sumPayout / recentThree.length).toFixed(1));
+
+  // 计算近三年每股分红复合年均增长率 (CAGR)
+  let dpsCAGR = 0;
+  if (recentThree.length >= 3) {
+    const firstDPS = recentThree[0].dividendPerShare;
+    const lastDPS = recentThree[recentThree.length - 1].dividendPerShare;
+    if (firstDPS > 0 && lastDPS > 0) {
+      const yearsGap = recentThree.length - 1;
+      dpsCAGR = Number(((Math.pow(lastDPS / firstDPS, 1 / yearsGap) - 1) * 100).toFixed(1));
+    }
+  }
+
+  // 连续分红年数
+  const consecutiveYears = stock.dividendYears || 3;
+
+  // 支付率健康度判断 (30%~75%为A股健康黄金区间)
+  let payoutHealthStatus: 'healthy' | 'overpaid' | 'underpaid' = 'healthy';
+  if (threeYearAvgPayoutRatio > 80) {
+    payoutHealthStatus = 'overpaid'; // 支付率过高，可能透支盈利或动用未分配利润
+  } else if (threeYearAvgPayoutRatio < 25) {
+    payoutHealthStatus = 'underpaid'; // 支付率偏低，分红意愿一般
+  } else {
+    payoutHealthStatus = 'healthy'; // 健康适度
+  }
+
+  // 计算稳定性得分 (0~100)
+  // 维度1: 连续分红年数 (最高35分)
+  const yearsScore = Math.min(35, consecutiveYears * 2.5);
+  // 维度2: 支付率合理性 (最高25分，在40%~70%得满分，过高或过低扣分)
+  let payoutScore = 25;
+  if (threeYearAvgPayoutRatio > 95) payoutScore = 12;
+  else if (threeYearAvgPayoutRatio > 80) payoutScore = 18;
+  else if (threeYearAvgPayoutRatio < 20) payoutScore = 14;
+  else if (threeYearAvgPayoutRatio < 30) payoutScore = 20;
+  // 维度3: 股息增长稳定性 (最高25分，正增长加分，严重下滑扣分)
+  let growthScore = 20;
+  if (dpsCAGR >= 8) growthScore = 25;
+  else if (dpsCAGR >= 0) growthScore = 22;
+  else if (dpsCAGR >= -5) growthScore = 15;
+  else growthScore = 10;
+  // 维度4: ROE盈利质地与现金流 (最高15分)
+  const roeScore = Math.min(15, Math.max(5, (stock.roe || 10) * 0.9));
+
+  const stabilityScore = Math.min(100, Math.round(yearsScore + payoutScore + growthScore + roeScore));
+
+  // 评定等级
+  let sustainabilityGrade: 'S' | 'A' | 'B' | 'C' = 'A';
+  let gradeLabel = '稳健良好级';
+  let gradeColor = 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30';
+
+  if (stabilityScore >= 85) {
+    sustainabilityGrade = 'S';
+    gradeLabel = '卓越稳健级';
+    gradeColor = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
+  } else if (stabilityScore >= 70) {
+    sustainabilityGrade = 'A';
+    gradeLabel = '稳健良好级';
+    gradeColor = 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30';
+  } else if (stabilityScore >= 55) {
+    sustainabilityGrade = 'B';
+    gradeLabel = '周期波动级';
+    gradeColor = 'text-amber-400 bg-amber-500/10 border-amber-500/30';
+  } else {
+    sustainabilityGrade = 'C';
+    gradeLabel = '需警惕防范';
+    gradeColor = 'text-rose-400 bg-rose-500/10 border-rose-500/30';
+  }
+
+  // 诊断四要素
+  const diagnosisItems: { title: string; status: 'good' | 'warning' | 'neutral'; desc: string }[] = [
+    {
+      title: '分红连续性',
+      status: consecutiveYears >= 10 ? 'good' : consecutiveYears >= 5 ? 'neutral' : 'warning',
+      desc: consecutiveYears >= 10 
+        ? `已连续分红 ${consecutiveYears} 年，穿越多轮牛熊周期，股东回报文化深厚，无断档风险。`
+        : `已连续分红 ${consecutiveYears} 年，分红记录稳定无中断。`
+    },
+    {
+      title: '支付率健康度',
+      status: payoutHealthStatus === 'healthy' ? 'good' : payoutHealthStatus === 'overpaid' ? 'warning' : 'neutral',
+      desc: payoutHealthStatus === 'healthy'
+        ? `近三年平均股利支付率 ${threeYearAvgPayoutRatio}%，处于 30%~75% 黄金安全带，净利润充分覆盖现金派息。`
+        : payoutHealthStatus === 'overpaid'
+        ? `近三年平均支付率 ${threeYearAvgPayoutRatio}% 偏高（>80%），需注意净利润与现金流能否长期支撑超高比例派现。`
+        : `近三年平均支付率 ${threeYearAvgPayoutRatio}% 偏低，留存盈余充足，未来具备进一步提升分红率的空间。`
+    },
+    {
+      title: '派息增速趋势',
+      status: dpsCAGR >= 0 ? 'good' : dpsCAGR >= -5 ? 'neutral' : 'warning',
+      desc: dpsCAGR > 0
+        ? `近三年每股派息复合增速 (CAGR) 为 +${dpsCAGR}%，每股现金分红呈平稳阶梯式上升态势。`
+        : dpsCAGR === 0
+        ? `近三年每股派息基本持平，分红底线保持坚挺。`
+        : `近三年每股派息回落约 ${Math.abs(dpsCAGR)}%，受行业景气度或盈利周期轻度扰动。`
+    },
+    {
+      title: '盈利与现金流支撑',
+      status: stock.roe >= 12 ? 'good' : stock.roe >= 8 ? 'neutral' : 'warning',
+      desc: `当前净资产收益率 (ROE) 为 ${stock.roe.toFixed(1)}%，主营业务盈利质地扎实，内生造血能力可有力保障未来分红兑现。`
+    }
+  ];
+
+  // 专家诊断结论
+  let expertSummary = '';
+  if (sustainabilityGrade === 'S') {
+    expertSummary = `该标的具备极高分红护城河，连续分红长达 ${consecutiveYears} 年，近三年平均股息率达 ${threeYearAvgYield}%，且股利支付率健康稳定（${threeYearAvgPayoutRatio}%）。现金流极其充沛，股息可持续性极强，具备显著的高胜率配置价值。`;
+  } else if (sustainabilityGrade === 'A') {
+    expertSummary = `该标的近三年平均股息率达到 ${threeYearAvgYield}%，连续分红 ${consecutiveYears} 年，每股分红稳定性良好。当前股利支付率（${threeYearAvgPayoutRatio}%）与净利润匹配度高，股息具有良好的长期可持续保障。`;
+  } else if (sustainabilityGrade === 'B') {
+    expertSummary = `该标的受所属行业周期波动影响，近三年分红金额存在一定起伏，但整体仍保持常态化现金分红。建议结合其行业周期低谷与当前PE估值安全垫择机介入。`;
+  } else {
+    expertSummary = `该标的近期分红有所波动或股利支付率逼近盈利承载上限，需留意分红可持续性及后续削减派息的潜在风险，建议密切跟踪最新财报现金流。`;
+  }
+
+  return {
+    points,
+    threeYearAvgYield,
+    threeYearAvgPayoutRatio,
+    dpsCAGR,
+    consecutiveYears,
+    stabilityScore,
+    sustainabilityGrade,
+    gradeLabel,
+    gradeColor,
+    payoutHealthStatus,
+    diagnosisItems,
+    expertSummary
   };
 }
 

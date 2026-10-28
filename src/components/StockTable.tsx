@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ArrowUpDown, ArrowUp, ArrowDown, Award, TrendingUp, TrendingDown, 
   ExternalLink, ShieldCheck, Flame, Star, Info, ChevronRight, CheckCircle2,
-  Image as ImageIcon, Sparkles, Target
+  Image as ImageIcon, Sparkles, Target, BarChart2, PieChart, ChevronLeft, SlidersHorizontal
 } from 'lucide-react';
 import { Stock, SortConfig, SortField } from '../types';
-import { calculateBuyOpportunityScore, getStockValuationStatus } from '../utils/calculator';
+import { calculateBuyOpportunityScore, getStockValuationStatus, getOrComputeStockPEPercentile } from '../utils/calculator';
 import { generateDynamicStockProfile } from '../data/allASharesDictionary';
 
 interface StockTableProps {
@@ -23,6 +23,8 @@ interface StockTableProps {
   targetWatchlistCodes?: string[];
   onToggleTargetWatchlist?: (stock: Stock) => void;
   onOpenTargetWatchlist?: () => void;
+  onExportTargetWatchlistForSelected?: () => void;
+  onOpenPortfolioDrawer?: () => void;
 }
 
 export const StockTable: React.FC<StockTableProps> = ({
@@ -39,9 +41,83 @@ export const StockTable: React.FC<StockTableProps> = ({
   onAddCustomStock,
   targetWatchlistCodes = [],
   onToggleTargetWatchlist,
-  onOpenTargetWatchlist
+  onOpenTargetWatchlist,
+  onExportTargetWatchlistForSelected,
+  onOpenPortfolioDrawer
 }) => {
   const [hoveredScoreStock, setHoveredScoreStock] = useState<string | null>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState<number>(1800);
+  const [scrollProgress, setScrollProgress] = useState<number>(0);
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef<boolean>(false);
+
+  const updateProgress = useCallback(() => {
+    if (!tableContainerRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = tableContainerRef.current;
+    const maxScroll = scrollWidth - clientWidth;
+    if (maxScroll > 0) {
+      setScrollProgress(Math.round((scrollLeft / maxScroll) * 100));
+    } else {
+      setScrollProgress(0);
+    }
+  }, []);
+
+  const handleTopScroll = () => {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+    if (tableContainerRef.current && topScrollRef.current) {
+      tableContainerRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+      updateProgress();
+    }
+    requestAnimationFrame(() => {
+      isSyncingScroll.current = false;
+    });
+  };
+
+  const handleTableScroll = () => {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+    if (topScrollRef.current && tableContainerRef.current) {
+      topScrollRef.current.scrollLeft = tableContainerRef.current.scrollLeft;
+      updateProgress();
+    }
+    requestAnimationFrame(() => {
+      isSyncingScroll.current = false;
+    });
+  };
+
+  const scrollByAmount = (delta: number) => {
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollBy({ left: delta, behavior: 'smooth' });
+    }
+  };
+
+  const scrollToPosition = (left: number) => {
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollTo({ left, behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    const measure = () => {
+      if (tableContainerRef.current) {
+        setTableScrollWidth(tableContainerRef.current.scrollWidth);
+        updateProgress();
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (tableContainerRef.current) {
+      ro.observe(tableContainerRef.current);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [stocks, updateProgress]);
 
   const renderSortIcon = (field: SortField) => {
     if (sortConfig.field !== field) {
@@ -73,7 +149,18 @@ export const StockTable: React.FC<StockTableProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {selectedStockCodes.length > 0 && onExportTargetWatchlistForSelected && (
+            <button
+              onClick={onExportTargetWatchlistForSelected}
+              className="px-2.5 py-1 rounded text-xs font-semibold bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/35 hover:to-rose-500/35 text-amber-300 border border-amber-500/50 transition flex items-center gap-1 active:scale-95 shadow-sm"
+              title="导出已勾选标的的理想目标买入价与需跌空间测算图"
+            >
+              <Target className="w-3.5 h-3.5 text-amber-400" />
+              <span>导出已选目标价测算 ({selectedStockCodes.length})</span>
+            </button>
+          )}
+
           {onOpenTargetWatchlist && (
             <button
               onClick={onOpenTargetWatchlist}
@@ -93,6 +180,17 @@ export const StockTable: React.FC<StockTableProps> = ({
             >
               <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
               <span>导出图片</span>
+            </button>
+          )}
+
+          {onOpenPortfolioDrawer && (
+            <button
+              onClick={onOpenPortfolioDrawer}
+              className="px-2.5 py-1 rounded text-xs font-semibold bg-gradient-to-r from-rose-600/20 to-amber-600/20 hover:from-rose-600/30 hover:to-amber-600/30 text-rose-300 border border-rose-500/40 transition flex items-center gap-1 active:scale-95"
+              title="打开右侧栏：高股息组合模拟器与现金流测算"
+            >
+              <PieChart className="w-3.5 h-3.5 text-rose-400" />
+              <span>组合模拟器 ({selectedStockCodes.length})</span>
             </button>
           )}
 
@@ -132,17 +230,143 @@ export const StockTable: React.FC<StockTableProps> = ({
             <Flame className="w-3.5 h-3.5 text-rose-400" />
             <span>按股息率排序</span>
           </button>
+
+          <button
+            onClick={() => onSort('pePercentile')}
+            className={`px-2.5 py-1 rounded text-xs font-medium transition border flex items-center gap-1 ${
+              sortConfig.field === 'pePercentile'
+                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+            }`}
+            title="按近5年PE历史分位数升序排序（低估值低分位优先）"
+          >
+            <BarChart2 className="w-3.5 h-3.5 text-purple-400" />
+            <span>按PE分位排序</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Floating Top Horizontal Scrollbar Track & Quick Positioning Control (免拉到底部，置顶横向拉动) */}
+      <div className="bg-slate-950/95 border-b border-slate-800 px-4 py-2.5 sticky top-[60px] z-20 backdrop-blur-md shadow-md flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-3 text-xs flex-wrap">
+          <div className="flex items-center gap-2 text-slate-300 font-medium">
+            <SlidersHorizontal className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="font-semibold text-rose-300">横向拉动条:</span>
+            <span className="text-[11px] text-slate-400 hidden md:inline">
+              拖动下方滑块或点击左右按钮，不用翻到底部即可查阅右侧市盈率PE、分位、ROE等指标
+            </span>
+            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border transition ${
+              scrollProgress >= 85
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                : 'bg-rose-500/10 text-rose-300 border-rose-500/20'
+            }`}>
+              {scrollProgress >= 85 ? '✅ 已滑至最右侧 (PE分位/ROE/操作)' : '👉 右侧含PE历史分位/ROE/增速/操作'}
+            </span>
+          </div>
+
+          {/* Quick Step Buttons & Column Range Anchors */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => scrollByAmount(-350)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition flex items-center gap-0.5 active:scale-95"
+              title="向左横移"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>向左</span>
+            </button>
+            <button
+              onClick={() => scrollByAmount(350)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition flex items-center gap-0.5 active:scale-95"
+              title="向右横移"
+            >
+              <span>向右</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+
+            <span className="text-slate-700 mx-0.5 hidden sm:inline">|</span>
+
+            <button
+              onClick={() => scrollToPosition(0)}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition border ${
+                scrollProgress <= 15
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 font-bold'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+              }`}
+              title="跳转至最左侧：股票代码、现价与股息率"
+            >
+              ⏪ 最左侧
+            </button>
+
+            <button
+              onClick={() => scrollToPosition(120)}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition border ${
+                scrollProgress > 15 && scrollProgress <= 35
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 font-bold'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+              }`}
+            >
+              现价/股息
+            </button>
+
+            <button
+              onClick={() => scrollToPosition(550)}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition border ${
+                scrollProgress > 35 && scrollProgress <= 65
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+              }`}
+            >
+              综合分/PE估值
+            </button>
+
+            <button
+              onClick={() => scrollToPosition(950)}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition border ${
+                scrollProgress > 65 && scrollProgress < 85
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+              }`}
+            >
+              PB/总市值
+            </button>
+
+            <button
+              onClick={() => scrollToPosition(2600)}
+              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold transition border shadow-sm ${
+                scrollProgress >= 85
+                  ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white border-rose-400 shadow-rose-950/50'
+                  : 'bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border-rose-500/40'
+              }`}
+              title="一键直接滑到最右侧，查看ROE、营收与净利增速、分红年数及操作"
+            >
+              ⏩ 直达最右侧 (ROE/成长/年限/操作)
+            </button>
+          </div>
+        </div>
+
+        {/* Native Synchronized Top Scrollbar Track */}
+        <div 
+          ref={topScrollRef} 
+          onScroll={handleTopScroll}
+          className="overflow-x-auto overflow-y-hidden h-4 bg-slate-900 rounded-lg border border-slate-800 cursor-ew-resize scrollbar-thin scrollbar-thumb-rose-500 hover:scrollbar-thumb-rose-400 scrollbar-track-slate-950 transition-colors shadow-inner"
+          title="按住鼠标左右拖拽滑块，实时横向移动下方表格数据"
+        >
+          <div style={{ width: `${Math.max(1800, tableScrollWidth)}px` }} className="h-2" />
         </div>
       </div>
 
       {/* Table Body Container */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs border-collapse">
+      <div 
+        ref={tableContainerRef} 
+        onScroll={handleTableScroll} 
+        className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700 hover:scrollbar-thumb-rose-500 scrollbar-track-slate-950"
+      >
+        <table className="w-full min-w-[1800px] text-left text-xs border-collapse">
           
           {/* Header */}
           <thead className="bg-slate-950/70 text-slate-400 border-b border-slate-800 uppercase tracking-wider sticky top-0 z-20 select-none">
             <tr>
-              <th className="py-3 px-3 w-10 text-center">
+              <th className="py-3 px-3 w-10 text-center sticky left-0 z-20 bg-slate-950">
                 <input
                   type="checkbox"
                   checked={isAllSelected}
@@ -152,11 +376,11 @@ export const StockTable: React.FC<StockTableProps> = ({
                 />
               </th>
               
-              <th className="py-3 px-2 w-12 text-center">
+              <th className="py-3 px-2 w-12 text-center sticky left-10 z-20 bg-slate-950">
                 排名
               </th>
 
-              <th className="py-3 px-3 font-semibold text-slate-300 min-w-[150px]">
+              <th className="py-3 px-3 font-semibold text-slate-300 min-w-[150px] sticky left-[88px] z-20 bg-slate-950 border-r border-slate-800 shadow-[2px_0_6px_-1px_rgba(0,0,0,0.5)]">
                 股票代码 / 简称
               </th>
 
@@ -219,12 +443,15 @@ export const StockTable: React.FC<StockTableProps> = ({
               </th>
 
               <th 
-                onClick={() => onSort('pe')}
-                className="py-3 px-3 font-semibold text-slate-300 cursor-pointer hover:bg-slate-800/50 transition text-right min-w-[85px]"
+                onClick={() => onSort(sortConfig.field === 'pe' ? 'pePercentile' : 'pe')}
+                className="py-3 px-3 font-semibold text-slate-300 cursor-pointer hover:bg-slate-800/50 transition text-right min-w-[125px]"
+                title="点击在市盈率PE与5年历史分位数之间切换排序"
               >
                 <div className="flex items-center justify-end gap-1">
-                  <span>市盈率PE</span>
-                  {renderSortIcon('pe')}
+                  <span className={sortConfig.field === 'pePercentile' ? 'text-purple-300 font-bold' : sortConfig.field === 'pe' ? 'text-amber-300 font-bold' : ''}>
+                    市盈率PE / 5年分位
+                  </span>
+                  {renderSortIcon(sortConfig.field === 'pePercentile' ? 'pePercentile' : 'pe')}
                 </div>
               </th>
 
@@ -288,7 +515,7 @@ export const StockTable: React.FC<StockTableProps> = ({
                 </div>
               </th>
 
-              <th className="py-3 px-3 text-center min-w-[80px]">
+              <th className="py-3 px-3 text-center min-w-[130px]">
                 操作
               </th>
             </tr>
@@ -298,7 +525,7 @@ export const StockTable: React.FC<StockTableProps> = ({
           <tbody className="divide-y divide-slate-800/70 text-slate-200">
             {stocks.length === 0 ? (
               <tr>
-                <td colSpan={16} className="py-14 text-center text-slate-500">
+                <td colSpan={17} className="py-14 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center gap-3 max-w-md mx-auto">
                     <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-rose-400">
                       <Info className="w-6 h-6" />
@@ -361,7 +588,7 @@ export const StockTable: React.FC<StockTableProps> = ({
                   >
                     
                     {/* Checkbox */}
-                    <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                    <td className="py-3 px-3 text-center sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800 transition-colors" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -371,7 +598,7 @@ export const StockTable: React.FC<StockTableProps> = ({
                     </td>
 
                     {/* Rank Badge */}
-                    <td className="py-3 px-2 text-center font-bold">
+                    <td className="py-3 px-2 text-center font-bold sticky left-10 z-10 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                       {index === 0 ? (
                         <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[11px] inline-flex items-center justify-center font-black shadow-sm shadow-amber-500/50">
                           1
@@ -390,7 +617,7 @@ export const StockTable: React.FC<StockTableProps> = ({
                     </td>
 
                     {/* Code & Name */}
-                    <td className="py-3 px-3">
+                    <td className="py-3 px-3 sticky left-[88px] z-10 bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800 shadow-[2px_0_6px_-1px_rgba(0,0,0,0.5)] transition-colors">
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-slate-100 group-hover:text-rose-400 transition text-sm">
@@ -420,6 +647,11 @@ export const StockTable: React.FC<StockTableProps> = ({
                         <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
                           <span className="font-mono">{stock.code}</span>
                           <span className="text-slate-600 font-mono text-[9px]">{stock.market}</span>
+                          {stock.alias && (
+                            <span className="text-slate-400/80 text-[10px]" title={`常用别名: ${stock.alias}`}>
+                              ({stock.alias.split(',')[0]})
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -554,30 +786,51 @@ export const StockTable: React.FC<StockTableProps> = ({
                       )}
                     </td>
 
-                    {/* PE Ratio & Buy Opportunity Score */}
+                    {/* PE Ratio & 5-Year Historical Percentile */}
                     <td className="py-3 px-3 text-right">
-                      <div className="flex flex-col items-end">
-                        <span className="font-mono font-medium text-slate-200">
-                          {stock.pe > 0 ? stock.pe.toFixed(1) : <span className="text-slate-500">亏损</span>}
-                        </span>
-                        {(() => {
-                          const opp = calculateBuyOpportunityScore(stock);
-                          const gradeColor = {
-                            S: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
-                            A: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
-                            B: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
-                            C: 'text-rose-400 bg-rose-500/10 border-rose-500/30'
-                          }[opp.grade];
-                          return (
-                            <span 
-                              className={`text-[9px] px-1 py-0.2 rounded font-sans font-semibold border ${gradeColor} mt-0.5`}
-                              title={`买入机会: ${opp.score}分 (${opp.grade}级 · ${opp.gradeLabel})`}
-                            >
-                              {opp.grade}级 · {opp.score.toFixed(0)}分
-                            </span>
-                          );
-                        })()}
-                      </div>
+                      {(() => {
+                        const peInfo = getOrComputeStockPEPercentile(stock);
+                        const pct = peInfo.fiveYearPercentile;
+                        const pctColor = 
+                          pct <= 25 ? 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30' :
+                          pct <= 50 ? 'text-teal-300 bg-teal-500/15 border-teal-500/30' :
+                          pct <= 75 ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' :
+                          'text-rose-300 bg-rose-500/15 border-rose-500/30';
+                        const barColor = 
+                          pct <= 25 ? 'bg-emerald-400' :
+                          pct <= 50 ? 'bg-teal-400' :
+                          pct <= 75 ? 'bg-amber-400' : 'bg-rose-400';
+                        const opp = calculateBuyOpportunityScore(stock);
+
+                        return (
+                          <div 
+                            className="flex flex-col items-end cursor-pointer group/pe"
+                            title={`市盈率PE: ${stock.pe > 0 ? stock.pe.toFixed(1) : '亏损'}\n5年历史分位: ${pct.toFixed(1)}% (${peInfo.cushionGradeLabel})\n5年估值区间: ${peInfo.minPE.toFixed(1)} ~ ${peInfo.maxPE.toFixed(1)} (均值: ${peInfo.avgPE.toFixed(1)})\n估值安全垫空间: ${peInfo.cushionPercent >= 0 ? '+' : ''}${peInfo.cushionPercent.toFixed(1)}%\n近1年分位: ${peInfo.oneYearPercentile.toFixed(1)}%\n买入机会分: ${opp.score}分 (${opp.grade}级 · ${opp.gradeLabel})`}
+                          >
+                            <div className="flex items-center gap-1.5 justify-end">
+                              <span className="font-mono font-bold text-slate-100">
+                                {stock.pe > 0 ? stock.pe.toFixed(1) : <span className="text-slate-500">亏损</span>}
+                              </span>
+                              <span className={`text-[9px] px-1 py-0.2 rounded font-mono font-semibold border ${pctColor}`}>
+                                5年{pct.toFixed(0)}%
+                              </span>
+                            </div>
+
+                            {/* Mini percentile visual progress bar */}
+                            <div className="flex items-center gap-1.5 mt-1 justify-end">
+                              <div className="w-12 h-1 bg-slate-800 rounded-full overflow-hidden flex">
+                                <div 
+                                  className={`h-full ${barColor}`} 
+                                  style={{ width: `${Math.min(100, Math.max(6, pct))}%` }} 
+                                />
+                              </div>
+                              <span className="text-[9px] text-slate-400 font-sans scale-95 origin-right">
+                                {peInfo.cushionGradeLabel}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     {/* PB Ratio */}

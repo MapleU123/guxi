@@ -8,7 +8,7 @@ import iso3dKlineImg from '../assets/images/kline_isometric_3d_1787369825191.jpg
 import minimalFintechImg from '../assets/images/kline_minimal_fintech_1787369837673.jpg';
 import finBullImg from '../assets/images/fin_gold_logo_1787369381609.jpg';
 import { AvatarStyle } from '../components/AvatarSelectorModal';
-import { getStockValuationStatus } from './calculator';
+import { getStockValuationStatus, getOrComputeStockPEPercentile } from './calculator';
 
 export type { AvatarStyle };
 
@@ -230,12 +230,12 @@ export async function renderStockTableToCanvas(
   const columns = [
     { key: 'index', label: '序号', width: 65, align: 'center' },
     { key: 'name', label: '股票名称', width: 175, align: 'left' },
-    { key: 'industry', label: '所属行业', width: 110, align: 'center' },
-    { key: 'price', label: '股价(元)', width: 105, align: 'right' },
-    { key: 'pe', label: 'PE', width: 90, align: 'right' },
-    { key: 'pb', label: 'PB', width: 90, align: 'right' },
-    { key: 'dividendYield', label: '股息率(ATM)', width: 130, align: 'right' },
-    { key: 'dividendYears', label: '连续分红年限', width: 125, align: 'center' },
+    { key: 'industry', label: '所属行业', width: 105, align: 'center' },
+    { key: 'price', label: '股价(元)', width: 100, align: 'right' },
+    { key: 'pe', label: 'PE / 5年分位', width: 120, align: 'right' },
+    { key: 'pb', label: 'PB', width: 80, align: 'right' },
+    { key: 'dividendYield', label: '股息率(ATM)', width: 125, align: 'right' },
+    { key: 'dividendYears', label: '连续分红年限', width: 120, align: 'center' },
     { key: 'score', label: '评分', width: 95, align: 'right' }
   ];
 
@@ -536,12 +536,28 @@ export async function renderStockTableToCanvas(
     ctx.fillText(`¥${stock.price.toFixed(2)}`, cellX + colPrice.width - 16, rowY + rowHeight / 2);
     cellX += colPrice.width;
 
-    // (5) PE
+    // (5) PE / 5年历史分位数
     const colPE = columns[4];
+    const peInfo = getOrComputeStockPEPercentile(stock);
+    const pct = peInfo.fiveYearPercentile;
+
     ctx.textAlign = 'right';
-    ctx.font = `12px ${fontMono}`;
-    ctx.fillStyle = stock.pe <= 10 ? colors.accentCyan : colors.text;
-    ctx.fillText(stock.pe > 0 ? stock.pe.toFixed(2) : '亏损', cellX + colPE.width - 16, rowY + rowHeight / 2);
+    ctx.font = `bold 12px ${fontMono}`;
+    ctx.fillStyle = stock.pe <= 10 ? colors.accentCyan : colors.title;
+    ctx.fillText(stock.pe > 0 ? stock.pe.toFixed(1) : '亏损', cellX + colPE.width - 16, rowY + rowHeight / 2 - 7);
+
+    // 5年历史百分位标注 (带红利估值阶梯色)
+    ctx.font = `bold 10px ${fontRegular}`;
+    let pctColor = colors.accentRose;
+    if (pct <= 25) {
+      pctColor = colors.accentGreen;
+    } else if (pct <= 50) {
+      pctColor = colors.accentCyan;
+    } else if (pct <= 75) {
+      pctColor = colors.accentGold;
+    }
+    ctx.fillStyle = pctColor;
+    ctx.fillText(`5年 ${pct.toFixed(0)}%分位`, cellX + colPE.width - 16, rowY + rowHeight / 2 + 8);
     cellX += colPE.width;
 
     // (6) PB
@@ -684,6 +700,8 @@ export async function copyStockTableImageToClipboard(
   }
 }
 
+export type AspectRatioOption = 'auto' | '9:16' | '3:4' | '16:9';
+
 export interface TargetWatchlistImageExportOptions {
   theme?: 'dark' | 'light' | 'wine';
   title?: string;
@@ -691,6 +709,7 @@ export interface TargetWatchlistImageExportOptions {
   watermark?: boolean;
   scale?: number;
   avatarStyle?: AvatarStyle;
+  aspectRatio?: AspectRatioOption;
 }
 
 /**
@@ -702,11 +721,12 @@ export async function renderTargetWatchlistToCanvas(
 ): Promise<HTMLCanvasElement> {
   const {
     theme = 'dark',
-    title = 'A股理想股息率备选股票池清单',
+    title = '全行业·理想目标买入价测算清单',
     subtitle = '基于自设理想目标股息率实时倒推目标建仓买入价与需跌空间',
     watermark = true,
     scale = 2,
-    avatarStyle = 'whiteThreeSoldiers'
+    avatarStyle = 'whiteThreeSoldiers',
+    aspectRatio = 'auto'
   } = options;
 
   // 预加载所选头像图片
@@ -797,30 +817,124 @@ export async function renderTargetWatchlistToCanvas(
         tagText: '#0369a1'
       };
 
-  // 2. 确定列宽配置 (基准像素)
-  const columns = [
-    { key: 'index', label: '序号', width: 60, align: 'center' },
-    { key: 'name', label: '股票名称 & 代码', width: 170, align: 'left' },
-    { key: 'industry', label: '所属行业', width: 100, align: 'center' },
-    { key: 'price', label: '实时现价', width: 95, align: 'right' },
-    { key: 'currentYield', label: '现股息率(TTM)', width: 110, align: 'right' },
-    { key: 'dps', label: '每股分红基准', width: 105, align: 'right' },
-    { key: 'targetYield', label: '理想股息率', width: 105, align: 'right' },
-    { key: 'targetPrice', label: '目标买入价', width: 110, align: 'right' },
-    { key: 'dropNeeded', label: '需跌空间/偏离', width: 115, align: 'right' },
-    { key: 'status', label: '达标状态', width: 100, align: 'center' }
+  // 2. 基础列宽与权重分配 (总基准 1070px)
+  // 用户指定字段及默认基准宽：
+  // 序号(60), 股票名称&代码(175), 所属行业(100), 实时现价(95), 现股息率(110), 每股分红基准(105), 理想股息率(105), 目标买入价(110), 需跌空间(115), 达标状态(95)
+  const baseColumnDefs = [
+    { key: 'index', label: '序号', baseWidth: 55, minWidth: 42, flex: 0.5, align: 'center' },
+    { key: 'name', label: '股票名称 & 代码', baseWidth: 175, minWidth: 130, flex: 1.8, align: 'left' },
+    { key: 'industry', label: '所属行业', baseWidth: 95, minWidth: 72, flex: 0.9, align: 'center' },
+    { key: 'price', label: '实时现价', baseWidth: 95, minWidth: 76, flex: 0.9, align: 'right' },
+    { key: 'currentYield', label: '现股息率(TTM)', baseWidth: 110, minWidth: 85, flex: 1.1, align: 'right' },
+    { key: 'dps', label: '每股分红基准', baseWidth: 105, minWidth: 82, flex: 1.0, align: 'right' },
+    { key: 'targetYield', label: '理想股息率', baseWidth: 105, minWidth: 82, flex: 1.0, align: 'right' },
+    { key: 'targetPrice', label: '目标买入价', baseWidth: 110, minWidth: 86, flex: 1.1, align: 'right' },
+    { key: 'dropNeeded', label: '需跌空间/偏离', baseWidth: 120, minWidth: 95, flex: 1.2, align: 'right' },
+    { key: 'status', label: '达标状态', baseWidth: 100, minWidth: 78, flex: 0.9, align: 'center' }
   ];
 
-  const totalTableWidth = columns.reduce((sum, col) => sum + col.width, 0);
-  const paddingX = 40;
-  const canvasWidth = totalTableWidth + paddingX * 2;
-
-  // 3. 计算高度 (包含公式展示栏)
+  // 3. 计算高度和行高 (支持纵向留白以契合固定宽高比)
   const headerHeight = 188;
   const tableHeaderRowHeight = 44;
-  const rowHeight = 48;
+  let rowHeight = 48;
   const footerHeight = 80;
-  const canvasHeight = headerHeight + tableHeaderRowHeight + (items.length * rowHeight) + footerHeight;
+  const baseContentHeight = headerHeight + tableHeaderRowHeight + (items.length * rowHeight) + footerHeight;
+
+  let canvasWidth = 1150;
+  let canvasHeight = baseContentHeight;
+  const paddingX = 40;
+
+  if (aspectRatio === '9:16') {
+    // 9:16 适合手机垂直长屏/海报/小红书/朋友圈 (竖屏 9:16 = 0.5625)
+    // 设定基准宽度 900px，高度 = 1600px
+    // 若内容很多，优先按内容高度倒推，或自适应行高
+    const targetHeightFromRatio = Math.round(960 * (16 / 9)); // 1706
+    if (baseContentHeight <= targetHeightFromRatio) {
+      canvasWidth = 960;
+      canvasHeight = targetHeightFromRatio;
+      // 微调行高填满垂直空间
+      const remainingSpace = canvasHeight - (headerHeight + tableHeaderRowHeight + footerHeight);
+      if (items.length > 0) {
+        const potentialRowHeight = Math.floor(remainingSpace / items.length);
+        if (potentialRowHeight >= 48 && potentialRowHeight <= 72) {
+          rowHeight = potentialRowHeight;
+        }
+      }
+    } else {
+      // 内容行很多时，以内容高为主并反推 9:16 宽度
+      canvasHeight = baseContentHeight;
+      canvasWidth = Math.max(900, Math.round(canvasHeight * (9 / 16)));
+    }
+  } else if (aspectRatio === '3:4') {
+    // 3:4 经典社交媒体卡片/小红书最佳尺寸 (0.75)
+    const targetHeightFromRatio = Math.round(1080 * (4 / 3)); // 1440
+    if (baseContentHeight <= targetHeightFromRatio) {
+      canvasWidth = 1080;
+      canvasHeight = targetHeightFromRatio;
+      const remainingSpace = canvasHeight - (headerHeight + tableHeaderRowHeight + footerHeight);
+      if (items.length > 0) {
+        const potentialRowHeight = Math.floor(remainingSpace / items.length);
+        if (potentialRowHeight >= 48 && potentialRowHeight <= 68) {
+          rowHeight = potentialRowHeight;
+        }
+      }
+    } else {
+      canvasHeight = baseContentHeight;
+      canvasWidth = Math.max(960, Math.round(canvasHeight * (3 / 4)));
+    }
+  } else if (aspectRatio === '16:9') {
+    // 16:9 宽屏/电脑显示器/演示文档/投屏 (1.7778)
+    // 设标准宽屏 1920，高度 1080
+    const targetWidthFromRatio = 1920;
+    const targetHeightFromRatio = 1080;
+    if (baseContentHeight <= targetHeightFromRatio) {
+      canvasWidth = targetWidthFromRatio;
+      canvasHeight = targetHeightFromRatio;
+      const remainingSpace = canvasHeight - (headerHeight + tableHeaderRowHeight + footerHeight);
+      if (items.length > 0) {
+        const potentialRowHeight = Math.floor(remainingSpace / items.length);
+        if (potentialRowHeight >= 48 && potentialRowHeight <= 64) {
+          rowHeight = potentialRowHeight;
+        }
+      }
+    } else {
+      canvasHeight = baseContentHeight;
+      canvasWidth = Math.max(1600, Math.round(canvasHeight * (16 / 9)));
+    }
+  } else {
+    // auto: 自然流式紧凑排版
+    const totalBaseColWidth = baseColumnDefs.reduce((sum, col) => sum + col.baseWidth, 0);
+    canvasWidth = totalBaseColWidth + paddingX * 2;
+    canvasHeight = baseContentHeight;
+  }
+
+  // 动态弹性分配列宽，使表格完美填满当前比例下的宽度
+  const availableTableWidth = canvasWidth - paddingX * 2;
+  const totalBaseWidth = baseColumnDefs.reduce((sum, c) => sum + c.baseWidth, 0);
+  const totalFlex = baseColumnDefs.reduce((sum, c) => sum + c.flex, 0);
+  const extraWidth = availableTableWidth - totalBaseWidth;
+
+  const columns = baseColumnDefs.map((col) => {
+    const calculatedWidth = Math.max(
+      col.minWidth,
+      Math.round(col.baseWidth + (extraWidth * (col.flex / totalFlex)))
+    );
+    return {
+      key: col.key,
+      label: col.label,
+      width: calculatedWidth,
+      align: col.align
+    };
+  });
+
+  // 修正最后一列因四舍五入产生的微小像素差
+  const currentTotalCalculatedWidth = columns.reduce((sum, c) => sum + c.width, 0);
+  const diff = availableTableWidth - currentTotalCalculatedWidth;
+  if (diff !== 0 && columns.length > 0) {
+    columns[columns.length - 1].width += diff;
+  }
+
+  const totalTableWidth = availableTableWidth;
 
   // 4. 创建并缩放 Canvas
   const canvas = document.createElement('canvas');
@@ -1140,12 +1254,23 @@ export async function renderTargetWatchlistToCanvas(
     ctx.fillText(`¥${item.currentPrice.toFixed(2)}`, cellX + colPrice.width - 12, rowY + rowHeight / 2);
     cellX += colPrice.width;
 
-    // (5) 现行股息率 (TTM)
+    // (5) 现行股息率 (TTM) & PE与5年分位
     const colCurrentYield = columns[4];
+    const targetPeInfo = getOrComputeStockPEPercentile(item.stock);
+    const targetPct = targetPeInfo.fiveYearPercentile;
+
     ctx.textAlign = 'right';
     ctx.font = `bold 13px ${fontMono}`;
     ctx.fillStyle = colors.accentRose;
-    ctx.fillText(`${item.currentYield.toFixed(2)}%`, cellX + colCurrentYield.width - 12, rowY + rowHeight / 2);
+    ctx.fillText(`${item.currentYield.toFixed(2)}%`, cellX + colCurrentYield.width - 12, rowY + rowHeight / 2 - 7);
+
+    ctx.font = `10px ${fontMono}`;
+    let pePctColor = colors.textMuted;
+    if (targetPct <= 25) pePctColor = colors.accentGreen;
+    else if (targetPct <= 50) pePctColor = colors.accentCyan;
+    else if (targetPct <= 75) pePctColor = colors.accentGold;
+    ctx.fillStyle = pePctColor;
+    ctx.fillText(`PE ${item.stock.pe > 0 ? item.stock.pe.toFixed(1) : '-'} · 5年${targetPct.toFixed(0)}%`, cellX + colCurrentYield.width - 12, rowY + rowHeight / 2 + 8);
     cellX += colCurrentYield.width;
 
     // (6) 每股分红基准
@@ -1286,7 +1411,7 @@ export async function downloadTargetWatchlistImage(
 
   const now = new Date();
   const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-  const baseName = (options.title || '理想股息率备选股票池清单').replace(/[\\/:*?"<>|]/g, '_');
+  const baseName = (options.title || '全行业·理想目标买入价测算清单').replace(/[\\/:*?"<>|]/g, '_');
   const filename = `${baseName}_${dateStr}.${format}`;
 
   const link = document.createElement('a');

@@ -2,14 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   X, Award, Percent, DollarSign, Calendar, TrendingUp, ShieldCheck, 
   Calculator, Landmark, ChevronRight, BarChart2, PieChart, Sparkles, Activity,
-  RefreshCw, Clock, Zap, ArrowUpRight, ArrowDownRight, CheckCircle2, Target, Check, Trash2
+  RefreshCw, Clock, Zap, ArrowUpRight, ArrowDownRight, CheckCircle2, Target, Check, Trash2, Layers
 } from 'lucide-react';
 import { Stock, TargetDividendWatchItem } from '../types';
-import { calculateTargetDividendProfile } from '../utils/calculator';
+import { calculateTargetDividendProfile, getOrComputeStockPEPercentile } from '../utils/calculator';
 import { PEValuationChart } from './PEValuationChart';
 import { BuyOpportunityIndicator } from './BuyOpportunityIndicator';
 import { IndustryComparisonRadar } from './IndustryComparisonRadar';
 import { ValuationCushionBar } from './ValuationCushionBar';
+import { DividendSustainabilityChart } from './DividendSustainabilityChart';
 import { fetchRealtimeQuote, applyRealtimeQuoteToStock, getTradingStatus, RealtimeQuote } from '../utils/realtimeQuoteService';
 
 interface StockDetailModalProps {
@@ -31,9 +32,7 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
   onSaveTargetWatchItem,
   onRemoveTargetWatchItem
 }) => {
-  if (!stock) return null;
-
-  const [currentStock, setCurrentStock] = useState<Stock>(stock);
+  const [currentStock, setCurrentStock] = useState<Stock | null>(stock);
   const [realtimeQuote, setRealtimeQuote] = useState<RealtimeQuote | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string>('');
@@ -45,7 +44,7 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
   // 理想股息率建仓测算状态
   const initialTargetYield = (targetWatchItem?.targetDividendYield ?? targetWatchItem?.targetYield) 
     ? (targetWatchItem?.targetDividendYield ?? targetWatchItem?.targetYield ?? 5.0) 
-    : Math.max(5.0, Number((stock.ttmDividendYield * 1.15).toFixed(1)));
+    : Math.max(5.0, Number(((stock?.ttmDividendYield ?? 4.0) * 1.15).toFixed(1)));
   const [idealYield, setIdealYield] = useState<number>(initialTargetYield);
   const [notes, setNotes] = useState<string>(targetWatchItem?.notes || targetWatchItem?.customNote || '');
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
@@ -54,6 +53,7 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
 
   // 刷新查询当天真实股价
   const handleRefreshRealtime = useCallback(async () => {
+    if (!currentStock) return;
     setIsRefreshing(true);
     try {
       const quote = await fetchRealtimeQuote(currentStock.code);
@@ -73,13 +73,15 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
     } finally {
       setIsRefreshing(false);
     }
-  }, [currentStock.code, onUpdateStock]);
+  }, [currentStock, onUpdateStock]);
 
   // 当 Modal 打开时自动查询当天最新真实股价
   useEffect(() => {
-    setCurrentStock(stock);
-    handleRefreshRealtime();
-  }, [stock.code]);
+    if (stock) {
+      setCurrentStock(stock);
+      handleRefreshRealtime();
+    }
+  }, [stock?.code]);
 
   useEffect(() => {
     if (targetWatchItem) {
@@ -88,6 +90,8 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
       setNotes(targetWatchItem.notes || targetWatchItem.customNote || '');
     }
   }, [targetWatchItem]);
+
+  if (!stock || !currentStock) return null;
 
   // 计算投资回报
   const shares = Math.floor(investmentAmount / (currentStock.price || 1));
@@ -143,6 +147,11 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
                 <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   {currentStock.industry}
                 </span>
+                {currentStock.alias && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/80" title="常用别名/简称">
+                    别名: {currentStock.alias.split(',')[0]}
+                  </span>
+                )}
                 {currentStock.isAristocrat && (
                   <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1">
                     <Award className="w-3 h-3" />
@@ -296,15 +305,38 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
               </div>
             </div>
 
-            <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
-              <div className="text-slate-400 text-[11px] mb-1">市盈率 PE / PB</div>
-              <div className="text-sm font-bold text-slate-200 font-mono">
-                {currentStock.pe.toFixed(1)} / {currentStock.pb.toFixed(2)}
-              </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">
-                市值: {currentStock.marketCap >= 10000 ? `${(currentStock.marketCap/10000).toFixed(2)}万亿` : `${currentStock.marketCap.toFixed(1)}亿`}
-              </div>
-            </div>
+            {(() => {
+              const peData = getOrComputeStockPEPercentile(currentStock);
+              const pct = peData.fiveYearPercentile;
+              const pctBadgeColor = 
+                pct <= 25 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' :
+                pct <= 50 ? 'text-teal-400 bg-teal-500/10 border-teal-500/30' :
+                pct <= 75 ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' :
+                'text-rose-400 bg-rose-500/10 border-rose-500/30';
+
+              return (
+                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+                  <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+                    <span>市盈率 PE / 5年分位</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border font-mono ${pctBadgeColor}`}>
+                      5年 {pct.toFixed(0)}%分位
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-base font-bold text-slate-100 font-mono">
+                      {currentStock.pe > 0 ? currentStock.pe.toFixed(1) : '亏损'}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      PB {currentStock.pb.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                    <span>5年: {peData.minPE.toFixed(1)}~{peData.maxPE.toFixed(1)}</span>
+                    <span className="text-emerald-400 font-medium">中枢 {peData.avgPE.toFixed(1)}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
               <div className="text-slate-400 text-[11px] mb-1">ROE & 股利支付率</div>
@@ -629,6 +661,111 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
 
             </div>
 
+            {/* 新增：三维加权「稳妥买入安全价」量化卡片 (Three-Anchor Robust Buy Price Card) */}
+            {targetProfile.robustProfile && (
+              <div className="mb-4 p-4 rounded-xl bg-gradient-to-br from-indigo-950/70 via-slate-900 to-slate-950 border border-indigo-500/40 shadow-lg">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-indigo-500/20">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-indigo-200 flex items-center gap-2">
+                        <span>三维加权「稳妥买入安全价」</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
+                          {targetProfile.robustProfile.verdictTag}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        融合【目标股息现金流锚】+【5年PE历史极低估值底】+【每股净资产资产底】，防范虚高分红陷阱
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-baseline gap-2 bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-500/30 self-start sm:self-auto">
+                    <span className="text-[11px] text-indigo-300 font-medium">稳妥买入线:</span>
+                    <span className="text-lg font-black font-mono text-emerald-300">
+                      ¥{targetProfile.robustProfile.safeBuyPrice.toFixed(2)}
+                    </span>
+                    <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                      targetProfile.robustProfile.isSafeReached 
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}>
+                      {targetProfile.robustProfile.isSafeReached ? '已落入安全区' : `需跌 ${Math.abs(targetProfile.robustProfile.safeDropNeededPercent).toFixed(1)}%`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 三锚分解对比条 */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3 text-[11px]">
+                  <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800">
+                    <div className="text-slate-400 flex items-center justify-between mb-1">
+                      <span>锚点① 股息现金流锚</span>
+                      <span className="text-amber-400 font-mono font-bold">
+                        ¥{targetProfile.robustProfile.threeAnchors.dividendAnchorPrice.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      基准: 理想股息率 {targetProfile.targetYield}% 现金回报
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800">
+                    <div className="text-slate-400 flex items-center justify-between mb-1">
+                      <span>锚点② 5年PE估值底锚</span>
+                      <span className="text-indigo-400 font-mono font-bold">
+                        ¥{targetProfile.robustProfile.threeAnchors.peFloorAnchorPrice.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      状态: {targetProfile.robustProfile.cushionGradeLabel}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800">
+                    <div className="text-slate-400 flex items-center justify-between mb-1">
+                      <span>锚点③ PB净资产安全锚</span>
+                      <span className="text-sky-400 font-mono font-bold">
+                        ¥{targetProfile.robustProfile.threeAnchors.pbAssetAnchorPrice.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      分红质量: {targetProfile.robustProfile.sustainabilityLabel} ({targetProfile.robustProfile.sustainabilityGrade}级)
+                    </div>
+                  </div>
+                </div>
+
+                {/* 梯级分批建仓击球区 (三档价位) */}
+                <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800/80 mb-2.5">
+                  <div className="text-[11px] font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-amber-400" />
+                    <span>实战梯级分批建仓击球区 (建议仓位规划):</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-mono">
+                    <div className="bg-slate-900/70 p-2 rounded border border-slate-800 flex items-center justify-between">
+                      <span className="text-slate-400">一档·观察底仓 (20%):</span>
+                      <span className="font-bold text-slate-200">≤ ¥{targetProfile.robustProfile.threeTranches.observePrice.toFixed(2)}</span>
+                    </div>
+                    <div className="bg-slate-900/70 p-2 rounded border border-emerald-500/30 flex items-center justify-between">
+                      <span className="text-emerald-400 font-semibold">二档·舒适加仓 (50%):</span>
+                      <span className="font-bold text-emerald-300">≤ ¥{targetProfile.robustProfile.threeTranches.comfortPrice.toFixed(2)}</span>
+                    </div>
+                    <div className="bg-slate-900/70 p-2 rounded border border-rose-500/30 flex items-center justify-between">
+                      <span className="text-rose-400 font-semibold">三档·极限重仓 (30%):</span>
+                      <span className="font-bold text-rose-300">≤ ¥{targetProfile.robustProfile.threeTranches.extremePrice.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 深度结论解读 */}
+                <div className="text-[11px] text-indigo-200/90 leading-relaxed bg-indigo-950/30 p-2.5 rounded-lg border border-indigo-500/20">
+                  <span className="font-bold text-indigo-300">💡 稳妥决策解读：</span>
+                  {targetProfile.robustProfile.verdictDescription}
+                </div>
+              </div>
+            )}
+
             {/* Note and Action Bar */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
               <div className="flex-1">
@@ -679,6 +816,9 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
             </div>
 
           </div>
+
+          {/* 3-Year Dividend Yield & Sustainability Trend Line Chart */}
+          <DividendSustainabilityChart stock={currentStock} />
 
           {/* Historical Dividends Table */}
           {currentStock.history && currentStock.history.length > 0 && (

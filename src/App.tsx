@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Stock, FilterCriteria, SortConfig, SortField, DividendAnomalyAlert, TargetDividendWatchItem } from './types';
+import { Stock, FilterCriteria, SortConfig, SortField, DividendAnomalyAlert, TargetDividendWatchItem, TargetDividendCalculatedStock } from './types';
 import { INITIAL_STOCKS } from './data/stocksData';
 import { 
   filterStocks, 
@@ -22,11 +22,12 @@ import { DividendPortfolioDrawer } from './components/DividendPortfolioDrawer';
 import { DividendAnomalyFloatingAlert } from './components/DividendAnomalyFloatingAlert';
 import { DividendAlertHistoryModal } from './components/DividendAlertHistoryModal';
 import { ExportImageModal } from './components/ExportImageModal';
+import { ExportTargetWatchlistImageModal } from './components/ExportTargetWatchlistImageModal';
 import { AvatarSelectorModal, AvatarStyle } from './components/AvatarSelectorModal';
 import { CustomStockImportModal } from './components/CustomStockImportModal';
 import { MarketUniverseModal } from './components/MarketUniverseModal';
 import { TargetWatchlistModal } from './components/TargetWatchlistModal';
-import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon, Target } from 'lucide-react';
+import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon, Target, BookmarkPlus } from 'lucide-react';
 import { exportToExcel } from './utils/exportExcel';
 
 const CUSTOM_STOCKS_STORAGE_KEY = 'a_share_dividend_custom_stocks';
@@ -35,6 +36,9 @@ const TARGET_WATCHLIST_STORAGE_KEY = 'a_share_dividend_target_watchlist_v1';
 const DEFAULT_TARGET_WATCHLIST: TargetDividendWatchItem[] = [
   { code: '601088', name: '中国神华', targetYield: 7.0, targetDividendYield: 7.0, notes: '煤炭现金奶牛，等待理想7%股息率低吸', customNote: '煤炭现金奶牛，等待理想7%股息率低吸', addedAt: '2026-03-01' },
   { code: '600036', name: '招商银行', targetYield: 6.0, targetDividendYield: 6.0, notes: '零售银行龙头，目标6%股息率分批建仓', customNote: '零售银行龙头，目标6%股息率分批建仓', addedAt: '2026-03-01' },
+  { code: '600066', name: '宇通客车', targetYield: 6.2, targetDividendYield: 6.2, notes: '汽车现金奶牛超高分红，目标6.2%股息率', customNote: '汽车现金奶牛超高分红，目标6.2%股息率', addedAt: '2026-03-01' },
+  { code: '600863', name: '内蒙华电', targetYield: 5.5, targetDividendYield: 5.5, notes: '华能蒙电70%分红率承诺，目标5.5%股息率', customNote: '华能蒙电70%分红率承诺，目标5.5%股息率', addedAt: '2026-03-01' },
+  { code: '002807', name: '江阴银行', targetYield: 5.2, targetDividendYield: 5.2, notes: '苏南优质农商行，目标5.2%股息率', customNote: '苏南优质农商行，目标5.2%股息率', addedAt: '2026-03-01' },
   { code: '600900', name: '长江电力', targetYield: 4.5, targetDividendYield: 4.5, notes: '水电大公用事业，理想4.5%股息率配置', customNote: '水电大公用事业，理想4.5%股息率配置', addedAt: '2026-03-01' },
   { code: '000651', name: '格力电器', targetYield: 6.5, targetDividendYield: 6.5, notes: '家电高股息龙头，目标6.5%股息率', customNote: '家电高股息龙头，目标6.5%股息率', addedAt: '2026-03-01' },
   { code: '601225', name: '陕西煤业', targetYield: 7.5, targetDividendYield: 7.5, notes: '高分红标杆，关注理想7.5%收益率买点', customNote: '高分红标杆，关注理想7.5%收益率买点', addedAt: '2026-03-01' }
@@ -132,6 +136,8 @@ export default function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [isMarketUniverseOpen, setIsMarketUniverseOpen] = useState<boolean>(false);
   const [isTargetWatchlistOpen, setIsTargetWatchlistOpen] = useState<boolean>(false);
+  const [isTargetExportModalOpen, setIsTargetExportModalOpen] = useState<boolean>(false);
+  const [targetExportItems, setTargetExportItems] = useState<TargetDividendCalculatedStock[]>([]);
 
   // 8. 理想股息率备选股票池状态
   const [watchItems, setWatchItems] = useState<TargetDividendWatchItem[]>(() => loadStoredTargetWatchlist());
@@ -388,6 +394,9 @@ export default function App() {
       if (sortConfig.field === 'valuation') {
         aVal = getStockValuationStatus(a).score;
         bVal = getStockValuationStatus(b).score;
+      } else if (sortConfig.field === 'pePercentile') {
+        aVal = a.pePercentile ?? 50;
+        bVal = b.pePercentile ?? 50;
       } else {
         aVal = a[sortConfig.field] as number;
         bVal = b[sortConfig.field] as number;
@@ -417,7 +426,7 @@ export default function App() {
       }
       return {
         field,
-        direction: field === 'valuation' ? 'asc' : 'desc' // 估值默认低估优先
+        direction: (field === 'valuation' || field === 'pe' || field === 'pePercentile') ? 'asc' : 'desc' // 估值与PE默认低估优先
       };
     });
   };
@@ -466,6 +475,56 @@ export default function App() {
     return stocks.filter((s) => selectedStockCodes.includes(s.code));
   }, [stocks, selectedStockCodes]);
 
+  // 批量将股票加入理想股息率备选池
+  const handleBatchAddTargetWatchlist = useCallback((stocksToAdd: Stock[]) => {
+    if (stocksToAdd.length === 0) return;
+    setWatchItems((prev) => {
+      const currentList = Array.isArray(prev) ? prev : [];
+      const currentCodes = new Set(currentList.map(w => w?.code));
+      const newItems: TargetDividendWatchItem[] = [];
+
+      stocksToAdd.forEach(stock => {
+        if (!currentCodes.has(stock.code)) {
+          const defaultTargetYield = Math.max(5.0, Number((stock.ttmDividendYield * 1.15).toFixed(1)));
+          newItems.push({
+            code: stock.code,
+            name: stock.name,
+            targetYield: defaultTargetYield,
+            targetDividendYield: defaultTargetYield,
+            notes: '从主表勾选批量自选加入',
+            customNote: '从主表勾选批量自选加入',
+            addedAt: new Date().toISOString().split('T')[0]
+          });
+        }
+      });
+
+      const next = [...newItems, ...currentList];
+      try {
+        localStorage.setItem(TARGET_WATCHLIST_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+    setIsTargetWatchlistOpen(true);
+  }, []);
+
+  // 导出已选标的的理想目标买入价测算
+  const handleExportTargetWatchlistForSelected = useCallback(() => {
+    if (selectedStockCodes.length === 0) return;
+    const selectedStocks = stocks.filter((s) => selectedStockCodes.includes(s.code));
+    const calculated: TargetDividendCalculatedStock[] = selectedStocks.map((stock) => {
+      // 优先读取自选池设定的理想股息率，否则根据当前股息率给一个有吸引力的进取目标值 (如现股息率+1.0%或至少5.5%)
+      const watchItem = watchItems.find((w) => w.code === stock.code);
+      const targetYield = watchItem?.targetDividendYield ?? watchItem?.targetYield ?? (
+        stock.ttmDividendYield > 0 ? Number((stock.ttmDividendYield + 1.0).toFixed(1)) : 6.0
+      );
+      return calculateTargetDividendProfile(stock, targetYield);
+    });
+    setTargetExportItems(calculated);
+    setIsTargetExportModalOpen(true);
+  }, [selectedStockCodes, stocks, watchItems]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-500 selection:text-white pb-20">
       
@@ -504,6 +563,8 @@ export default function App() {
         onOpenTargetWatchlist={() => setIsTargetWatchlistOpen(true)}
         targetWatchlistCount={watchItems.length}
         targetReachedCount={targetReachedCount}
+        onOpenPortfolioDrawer={() => setIsPortfolioDrawerOpen(true)}
+        portfolioCount={selectedStockCodes.length}
       />
 
       {/* Main Container */}
@@ -514,6 +575,7 @@ export default function App() {
           currentCriteria={criteria}
           onApplyPreset={(newCrit) => setCriteria((prev) => ({ ...prev, ...newCrit }))}
           onReset={() => setCriteria(DEFAULT_CRITERIA)}
+          matchedCount={processedStocks.length}
         />
 
         {/* Market Overview Ribbon */}
@@ -522,6 +584,26 @@ export default function App() {
           totalStockCount={stocks.length}
           onSelectStock={(stock) => setSelectedStockDetail(stock)}
           onOpenMarketUniverse={() => setIsMarketUniverseOpen(true)}
+          selectedIndustries={criteria.selectedIndustries}
+          onFilterIndustry={(industry) => {
+            setCriteria((prev) => {
+              const exists = prev.selectedIndustries.includes(industry);
+              const nextInds = exists && prev.selectedIndustries.length === 1 ? [] : [industry];
+              const newCrit = {
+                ...prev,
+                selectedIndustries: nextInds
+              };
+              if (nextInds.length === 1) {
+                if (nextInds[0] === '水电' && prev.minDividendYield > 1.8) {
+                  newCrit.minDividendYield = 1.8;
+                  newCrit.maxPE = Math.max(prev.maxPE, 25);
+                } else if (nextInds[0] === '保险' && prev.minDividendYield > 2.0) {
+                  newCrit.minDividendYield = 2.0;
+                }
+              }
+              return newCrit;
+            });
+          }}
         />
 
         {/* Filter Control Panel */}
@@ -551,10 +633,12 @@ export default function App() {
           targetWatchlistCodes={watchItems.map(w => w.code)}
           onToggleTargetWatchlist={handleToggleTargetWatchlist}
           onOpenTargetWatchlist={() => setIsTargetWatchlistOpen(true)}
+          onExportTargetWatchlistForSelected={handleExportTargetWatchlistForSelected}
           onOpenExportImage={() => {
             setCustomExportStocks(null);
             setIsExportImageModalOpen(true);
           }}
+          onOpenPortfolioDrawer={() => setIsPortfolioDrawerOpen(true)}
         />
 
         {/* Bottom Educational Banner */}
@@ -578,7 +662,7 @@ export default function App() {
 
       {/* Floating Bottom Bar for Portfolio Action */}
       {selectedStockCodes.length > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-rose-500/40 px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-4 animate-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-rose-500/40 px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-4 animate-in slide-in-from-bottom-3 duration-200 flex-wrap justify-center">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
             <span className="text-xs text-slate-200 font-medium">
@@ -586,7 +670,27 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 一键将选中的标的加入我的自选备选池 */}
+            <button
+              onClick={() => handleBatchAddTargetWatchlist(selectedPortfolioStocks)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-semibold text-xs shadow-md transition active:scale-95"
+              title="将勾选的标的一键加入【我的自选备选池】并进入目标价测算"
+            >
+              <BookmarkPlus className="w-3.5 h-3.5 text-amber-400" />
+              <span>加入自选备选池 ({selectedStockCodes.length})</span>
+            </button>
+
+            {/* 核心：选中目标之后，导出理想目标买入价测算图 */}
+            <button
+              onClick={handleExportTargetWatchlistForSelected}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-emerald-500/20 hover:from-amber-500/30 hover:via-rose-500/30 hover:to-emerald-500/30 text-amber-300 border border-amber-500/50 font-semibold text-xs shadow-md transition active:scale-95"
+              title="导出已勾选标的的理想目标买入价、每股分红、需跌空间及测算公式高清图"
+            >
+              <Target className="w-3.5 h-3.5 text-amber-400" />
+              <span>导出目标买入价测算 ({selectedStockCodes.length})</span>
+            </button>
+
             <button
               onClick={() => setIsPortfolioDrawerOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-semibold text-xs shadow-md transition active:scale-95"
@@ -601,10 +705,10 @@ export default function App() {
                 setIsExportImageModalOpen(true);
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-medium text-xs transition active:scale-95"
-              title="将已勾选标的高清导出为图片"
+              title="将已勾选标的高清导出为综合估值图片清单"
             >
               <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
-              <span>导出已选图片</span>
+              <span>导出估值图片</span>
             </button>
 
             <button
@@ -645,7 +749,7 @@ export default function App() {
         isRefreshing={isRefreshing}
       />
 
-      {/* Export Image Preview & Download Modal */}
+      {/* Export Image Preview & Download Modal (基础估值清单) */}
       <ExportImageModal
         isOpen={isExportImageModalOpen}
         onClose={() => {
@@ -655,6 +759,30 @@ export default function App() {
         stocks={customExportStocks || processedStocks}
         criteria={criteria}
         avatarStyle={avatarStyle}
+        onSwitchToTargetExport={handleExportTargetWatchlistForSelected}
+      />
+
+      {/* 导出目标买入价测算图 (针对选中目标，包含推算公式与水印) */}
+      <ExportTargetWatchlistImageModal
+        isOpen={isTargetExportModalOpen}
+        onClose={() => {
+          setIsTargetExportModalOpen(false);
+          setTargetExportItems([]);
+        }}
+        items={targetExportItems}
+        avatarStyle={avatarStyle}
+        defaultTitle={(() => {
+          const uniqueIndustries = Array.from(
+            new Set(targetExportItems.map((i) => i.stock.industry).filter(Boolean))
+          );
+          if (uniqueIndustries.length === 1) {
+            return `${uniqueIndustries[0]}·理想目标买入价测算清单`;
+          }
+          if (criteria?.selectedIndustries && criteria.selectedIndustries.length === 1) {
+            return `${criteria.selectedIndustries[0]}·理想目标买入价测算清单`;
+          }
+          return '全行业·理想目标买入价测算清单';
+        })()}
       />
 
       {/* Avatar Style Selector Modal */}
@@ -671,13 +799,38 @@ export default function App() {
         onClose={() => setIsExplainerOpen(false)}
       />
 
-      {/* Dividend Portfolio Drawer */}
+      {/* Persistent Right Edge Trigger Tab (随时一键开启右侧抽屉栏) */}
+      <button
+        onClick={() => setIsPortfolioDrawerOpen(true)}
+        className="fixed right-2 sm:right-3.5 top-1/2 -translate-y-1/2 z-50 bg-gradient-to-b from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white px-2.5 py-3 rounded-2xl shadow-2xl flex flex-col items-center gap-1.5 transition-all duration-200 hover:scale-105 group border border-white/30 ring-4 ring-rose-500/25 active:scale-95 cursor-pointer backdrop-blur-md"
+        title="点击展开右侧栏：高股息投资组合模拟器与现金流测算"
+      >
+        <PieChart className="w-4 h-4 text-white group-hover:rotate-45 transition-transform duration-300 drop-shadow" />
+        <div className="flex flex-col items-center text-[11px] font-bold leading-tight py-0.5 text-white drop-shadow select-none tracking-widest">
+          <span>组</span>
+          <span>合</span>
+          <span>测</span>
+          <span>算</span>
+        </div>
+        <span className="bg-black/45 text-amber-300 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full border border-white/20 shadow-inner">
+          {selectedStockCodes.length}
+        </span>
+      </button>
+
+      {/* Dividend Portfolio Drawer (右侧抽屉栏) */}
       <DividendPortfolioDrawer
         isOpen={isPortfolioDrawerOpen}
         onClose={() => setIsPortfolioDrawerOpen(false)}
         selectedStocks={selectedPortfolioStocks}
         onRemoveStock={handleRemoveFromPortfolio}
         onClearAll={handleClearPortfolio}
+        onAddPresetStocks={() => {
+          setSelectedStockCodes(['601088', '600036', '600900', '000651', '601225']);
+        }}
+        onAddAllFiltered={() => {
+          setSelectedStockCodes(processedStocks.map(s => s.code));
+        }}
+        filteredCount={processedStocks.length}
       />
 
       {/* Dividend Anomaly Alert History Modal */}
@@ -711,8 +864,8 @@ export default function App() {
         existingStocks={stocks}
         onAddStocks={handleAddCustomStocks}
         onUpdateStock={handleUpdateCustomStock}
-        onDeleteStock={handleDeleteCustomStock}
-        onClearAllCustom={handleClearAllCustomStocks}
+        onDeleteCustomStock={handleDeleteCustomStock}
+        onClearCustomStocks={handleClearAllCustomStocks}
       />
 
     </div>

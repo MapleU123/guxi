@@ -15,7 +15,8 @@ import {
   Edit3,
   RotateCcw,
   Shield,
-  ShieldOff
+  ShieldOff,
+  Target
 } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { 
@@ -34,6 +35,7 @@ interface ExportImageModalProps {
   stocks: Stock[];
   criteria: FilterCriteria;
   avatarStyle: AvatarStyle;
+  onSwitchToTargetExport?: () => void;
 }
 
 export const ExportImageModal: React.FC<ExportImageModalProps> = ({
@@ -41,7 +43,8 @@ export const ExportImageModal: React.FC<ExportImageModalProps> = ({
   onClose,
   stocks,
   criteria,
-  avatarStyle
+  avatarStyle,
+  onSwitchToTargetExport
 }) => {
   const [theme, setTheme] = useState<'dark' | 'light' | 'wine'>('dark');
   const [watermark, setWatermark] = useState<boolean>(true);
@@ -160,12 +163,28 @@ export const ExportImageModal: React.FC<ExportImageModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 flex items-center justify-center transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onSwitchToTargetExport && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onSwitchToTargetExport();
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 border border-amber-500/40 transition flex items-center gap-1.5 active:scale-95"
+                title="切换到理想目标买入价与需跌空间测算导出模式"
+              >
+                <Target className="w-3.5 h-3.5 text-amber-400" />
+                <span>目标买入价测算导出</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 flex items-center justify-center transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Title & Strategy Preset Customizer Bar */}

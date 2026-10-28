@@ -21,6 +21,7 @@ import {
   copyTargetWatchlistImageToClipboard,
   TargetWatchlistImageExportOptions,
   AvatarStyle,
+  AspectRatioOption,
   getSuggestedStrategyTitle,
   STRATEGY_TITLE_PRESETS
 } from '../utils/exportImage';
@@ -43,25 +44,46 @@ export const ExportTargetWatchlistImageModal: React.FC<ExportTargetWatchlistImag
   defaultTitle
 }) => {
   const [theme, setTheme] = useState<'dark' | 'light' | 'wine'>('dark');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatioOption>('auto');
   const [watermark, setWatermark] = useState<boolean>(true);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [copyFailed, setCopyFailed] = useState<boolean>(false);
 
-  // 依据传入条件或默认值推导标题
-  const suggested = getSuggestedStrategyTitle(criteria);
+  // 依据传入条件、行业归属及默认值推导表头标题，严格遵循「该行业名称·理想目标买入价测算清单」格式
   const computeDefaultTitle = () => {
-    if (defaultTitle) return defaultTitle;
-    if (criteria && suggested.presetKey) {
-      return `${suggested.title} · 理想目标买入价测算池`;
+    if (defaultTitle && defaultTitle.trim()) return defaultTitle.trim();
+
+    // 1. 优先检查待导出的 items 中所包含的所属行业
+    const uniqueIndustries = Array.from(
+      new Set(items.map((i) => i.stock.industry).filter(Boolean))
+    );
+
+    // 若当前导出清单均属于同一行业（如全为公用事业、银行、煤炭开采等）
+    if (uniqueIndustries.length === 1) {
+      return `${uniqueIndustries[0]}·理想目标买入价测算清单`;
     }
-    return 'A股理想股息率备选股票池清单';
+
+    // 2. 检查筛选器 criteria 中是否锁定单个行业
+    if (criteria?.selectedIndustries && criteria.selectedIndustries.length === 1) {
+      return `${criteria.selectedIndustries[0]}·理想目标买入价测算清单`;
+    }
+
+    // 3. 多行业综合/全量导出默认格式
+    return '全行业·理想目标买入价测算清单';
   };
 
   const [title, setTitle] = useState<string>(computeDefaultTitle());
   const [subtitle, setSubtitle] = useState<string>('基于自设理想目标股息率实时倒推目标建仓买入价与需跌空间');
   const [isCustomEdited, setIsCustomEdited] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsCustomEdited(false);
+      setTitle(computeDefaultTitle());
+    }
+  }, [isOpen, defaultTitle]);
 
   useEffect(() => {
     if (!isCustomEdited) {
@@ -74,7 +96,7 @@ export const ExportTargetWatchlistImageModal: React.FC<ExportTargetWatchlistImag
     setIsCustomEdited(false);
   };
 
-  // 监听 items / theme / avatarStyle / title / watermark 生成高清预览
+  // 监听 items / theme / avatarStyle / title / watermark / aspectRatio 生成高清预览
   useEffect(() => {
     if (!isOpen || items.length === 0) return;
 
@@ -85,11 +107,12 @@ export const ExportTargetWatchlistImageModal: React.FC<ExportTargetWatchlistImag
       try {
         const options: TargetWatchlistImageExportOptions = {
           theme,
-          title: title.trim() || 'A股理想股息率备选股票池清单',
+          title: title.trim() || '全行业·理想目标买入价测算清单',
           subtitle: subtitle.trim() || '基于自设理想目标股息率实时倒推目标建仓买入价与需跌空间',
           watermark,
           scale: 2,
-          avatarStyle
+          avatarStyle,
+          aspectRatio
         };
         const canvas = await renderTargetWatchlistToCanvas(items, options);
         if (isMounted) {
@@ -107,16 +130,16 @@ export const ExportTargetWatchlistImageModal: React.FC<ExportTargetWatchlistImag
     return () => {
       isMounted = false;
     };
-  }, [isOpen, items, theme, avatarStyle, title, subtitle, watermark]);
+  }, [isOpen, items, theme, avatarStyle, title, subtitle, watermark, aspectRatio]);
 
   if (!isOpen) return null;
 
   const handleDownload = async (format: 'png' | 'jpeg') => {
-    await downloadTargetWatchlistImage(items, { theme, avatarStyle, watermark, title, subtitle }, format);
+    await downloadTargetWatchlistImage(items, { theme, avatarStyle, watermark, title, subtitle, aspectRatio }, format);
   };
 
   const handleCopyClipboard = async () => {
-    const success = await copyTargetWatchlistImageToClipboard(items, { theme, avatarStyle, watermark, title, subtitle });
+    const success = await copyTargetWatchlistImageToClipboard(items, { theme, avatarStyle, watermark, title, subtitle, aspectRatio });
     if (success) {
       setCopied(true);
       setCopyFailed(false);
@@ -193,21 +216,21 @@ export const ExportTargetWatchlistImageModal: React.FC<ExportTargetWatchlistImag
                   setTitle(e.target.value);
                   setIsCustomEdited(true);
                 }}
-                placeholder="输入或选择图片标题 (如 红利龙头核心池·目标价清单)..."
+                placeholder="输入或选择图片表头 (如 公用事业·理想目标买入价测算清单)..."
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500 font-semibold"
               />
             </div>
 
-            {/* Quick Strategy Title Chips */}
+            {/* Quick Industry Title Chips (格式：该行业名称·理想目标买入价测算清单) */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] text-slate-400">预设模板:</span>
-              {[
-                '红利龙头核心池·目标价清单',
-                '十年红利贵族·建仓池',
-                '超高股息精选·目标价',
-                '破净高股息·理想买入池',
-                'A股理想股息率备选池'
-              ].map((presetTitle) => (
+              <span className="text-[11px] text-slate-400">快捷表头:</span>
+              {Array.from(
+                new Set([
+                  computeDefaultTitle(),
+                  ...Array.from(new Set(items.map((i) => i.stock.industry).filter(Boolean))).map((ind) => `${ind}·理想目标买入价测算清单`),
+                  '全行业·理想目标买入价测算清单'
+                ])
+              ).slice(0, 4).map((presetTitle) => (
                 <button
                   key={presetTitle}
                   onClick={() => {
@@ -238,11 +261,68 @@ export const ExportTargetWatchlistImageModal: React.FC<ExportTargetWatchlistImag
           </div>
         </div>
 
-        {/* Toolbar: Theme Selector & Export Actions */}
+        {/* Toolbar: Theme, AspectRatio & Watermark Selector */}
         <div className="px-5 py-2.5 bg-slate-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
           
-          {/* Theme & Watermark Selector */}
-          <div className="flex items-center gap-4 flex-wrap">
+          {/* Options: AspectRatio, Theme, Watermark */}
+          <div className="flex items-center gap-3.5 flex-wrap">
+
+            {/* AspectRatio Selector (9:16, 3:4, 16:9, 自适应) */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 font-medium flex items-center gap-1">
+                <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                画幅比例:
+              </span>
+              <div className="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800">
+                <button
+                  onClick={() => setAspectRatio('auto')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1 ${
+                    aspectRatio === 'auto'
+                      ? 'bg-cyan-500/20 text-cyan-300 shadow-sm border border-cyan-500/40 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="紧凑自适应内容高宽"
+                >
+                  <span>自适应</span>
+                </button>
+                <button
+                  onClick={() => setAspectRatio('9:16')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1 ${
+                    aspectRatio === '9:16'
+                      ? 'bg-rose-500/20 text-rose-300 shadow-sm border border-rose-500/40 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="9:16 适合手机垂直长屏/海报/朋友圈/快手/小红书"
+                >
+                  <span className="font-mono text-[11px]">9:16</span>
+                  <span className="text-[10px] text-slate-400">(手机竖屏)</span>
+                </button>
+                <button
+                  onClick={() => setAspectRatio('3:4')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1 ${
+                    aspectRatio === '3:4'
+                      ? 'bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/40 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="3:4 经典社交媒体卡片/公众号封面配图"
+                >
+                  <span className="font-mono text-[11px]">3:4</span>
+                  <span className="text-[10px] text-slate-400">(社交卡片)</span>
+                </button>
+                <button
+                  onClick={() => setAspectRatio('16:9')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1 ${
+                    aspectRatio === '16:9'
+                      ? 'bg-emerald-500/20 text-emerald-300 shadow-sm border border-emerald-500/40 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="16:9 电脑宽屏/演示幻灯片/横屏投屏"
+                >
+                  <span className="font-mono text-[11px]">16:9</span>
+                  <span className="text-[10px] text-slate-400">(横屏宽屏)</span>
+                </button>
+              </div>
+            </div>
             {/* Theme Selector */}
             <div className="flex items-center gap-2">
               <span className="text-slate-400 font-medium flex items-center gap-1">
@@ -397,8 +477,8 @@ export const ExportTargetWatchlistImageModal: React.FC<ExportTargetWatchlistImag
               {watermark ? '含「公众号：我爱这young」专属防伪水印。' : '已设为纯净无水印模式。'}
             </span>
           </div>
-          <span className="text-slate-500 font-mono">
-            分辨率: 矢量高清栅格化
+          <span className="text-slate-400 font-mono text-[11px] bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+            画幅比例: {aspectRatio === 'auto' ? '自适应排版' : aspectRatio}
           </span>
         </div>
 

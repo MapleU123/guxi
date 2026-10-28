@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Filter, Search, SlidersHorizontal, ChevronDown, ChevronUp, 
   HelpCircle, CheckSquare, Square, X, Layers, Check, Plus,
-  Sparkles, ArrowUpRight, ShieldCheck, TrendingUp, Database, Loader2
+  Sparkles, ArrowUpRight, ShieldCheck, TrendingUp, Database, Loader2, Zap
 } from 'lucide-react';
 import { FilterCriteria, DividendYieldType, Stock } from '../types';
 import { ALL_INDUSTRIES } from '../data/stocksData';
@@ -143,7 +143,18 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     } else {
       nextIndustries = [...criteria.selectedIndustries, industry];
     }
-    onChange({ ...criteria, selectedIndustries: nextIndustries });
+    
+    // 如果用户单选了特定红利行业（如水电、保险），自动调节门槛以确保5大清洁水电金牛或险资龙头完整展示
+    const newCriteria = { ...criteria, selectedIndustries: nextIndustries };
+    if (nextIndustries.length === 1) {
+      if (nextIndustries[0] === '水电' && criteria.minDividendYield > 1.8) {
+        newCriteria.minDividendYield = 1.8;
+        newCriteria.maxPE = Math.max(criteria.maxPE, 25);
+      } else if (nextIndustries[0] === '保险' && criteria.minDividendYield > 2.0) {
+        newCriteria.minDividendYield = 2.0;
+      }
+    }
+    onChange(newCriteria);
   };
 
   const handleSelectAllIndustries = () => {
@@ -535,12 +546,50 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
               {criteria.selectedIndustries.length > 0 && (
                 <button
                   onClick={handleSelectAllIndustries}
-                  className="text-[11px] text-rose-400 hover:text-rose-300 font-medium transition"
+                  className="text-[11px] text-rose-400 hover:text-rose-300 font-medium transition cursor-pointer"
                 >
                   重置为全部行业
                 </button>
               )}
             </div>
+          </div>
+
+          {/* 重点特色高股息赛道醒目直达条 */}
+          <div className="p-2.5 rounded-xl bg-gradient-to-r from-slate-900 via-emerald-950/20 to-slate-900 border border-emerald-500/30 mb-2.5 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-emerald-300 flex items-center gap-1 shrink-0 mr-1">
+              <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span>重点特色红利赛道:</span>
+            </span>
+            {[
+              { name: '水电', icon: '🌊', count: industryStockCounts['水电'] || 5, tip: '长江电力/华能水电/川投能源/国投电力/三峡水利' },
+              { name: '电信运营商', icon: '📡', count: industryStockCounts['电信运营商'] || 3, tip: '中国移动/中国电信/中国联通' },
+              { name: '大众服饰', icon: '👔', count: industryStockCounts['大众服饰'] || 7, tip: '海澜之家/雅戈尔/森马服饰/报喜鸟/太平鸟/地素/比音勒芬' },
+              { name: '纺织服饰', icon: '🧵', count: industryStockCounts['纺织服饰'] || 4, tip: '富安娜/罗莱生活/水星家纺/伟星股份' },
+              { name: '保险', icon: '🛡️', count: industryStockCounts['保险'] || 5, tip: '中国平安/中国太保/中国人保/中国人寿/新华保险' },
+              { name: '煤炭开采', icon: '⛏️', count: industryStockCounts['煤炭开采'] || 20, tip: '中国神华/陕西煤业/兖矿能源等' },
+              { name: '银行', icon: '🏦', count: industryStockCounts['银行'] || 32, tip: '国有大行与优质城农商高股息' }
+            ].map(sec => {
+              const isSelected = criteria.selectedIndustries.includes(sec.name);
+              return (
+                <button
+                  key={sec.name}
+                  type="button"
+                  onClick={() => handleIndustryToggle(sec.name)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 border cursor-pointer ${
+                    isSelected
+                      ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 shadow-sm shadow-emerald-950/50'
+                      : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700/80 hover:border-emerald-500/50'
+                  }`}
+                  title={`${sec.name}: ${sec.tip}`}
+                >
+                  <span>{sec.icon}</span>
+                  <span>{sec.name}</span>
+                  <span className={`text-[10px] font-mono px-1 rounded ${isSelected ? 'bg-emerald-500/40 text-white' : 'bg-slate-900/80 text-emerald-400/90'}`}>
+                    {sec.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex flex-wrap gap-1.5">
