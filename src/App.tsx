@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Stock, FilterCriteria, SortConfig, SortField, DividendAnomalyAlert, TargetDividendWatchItem, TargetDividendCalculatedStock } from './types';
+import { Stock, FilterCriteria, SortConfig, SortField, DividendAnomalyAlert, TargetDividendWatchItem, TargetDividendCalculatedStock, UserSession } from './types';
 import { INITIAL_STOCKS } from './data/stocksData';
 import { 
   filterStocks, 
@@ -27,11 +27,28 @@ import { AvatarSelectorModal, AvatarStyle } from './components/AvatarSelectorMod
 import { CustomStockImportModal } from './components/CustomStockImportModal';
 import { MarketUniverseModal } from './components/MarketUniverseModal';
 import { TargetWatchlistModal } from './components/TargetWatchlistModal';
+import { AuthModal } from './components/AuthModal';
 import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon, Target, BookmarkPlus } from 'lucide-react';
 import { exportToExcel } from './utils/exportExcel';
 
 const CUSTOM_STOCKS_STORAGE_KEY = 'a_share_dividend_custom_stocks';
 const TARGET_WATCHLIST_STORAGE_KEY = 'a_share_dividend_target_watchlist_v1';
+const USER_SESSION_STORAGE_KEY = 'a_share_user_session_v1';
+
+function loadStoredUserSession(): UserSession | null {
+  try {
+    const raw = localStorage.getItem(USER_SESSION_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.isLoggedIn) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load user session', e);
+  }
+  return null;
+}
 
 const DEFAULT_TARGET_WATCHLIST: TargetDividendWatchItem[] = [
   { code: '601088', name: '中国神华', targetYield: 7.0, targetDividendYield: 7.0, notes: '煤炭现金奶牛，等待理想7%股息率低吸', customNote: '煤炭现金奶牛，等待理想7%股息率低吸', addedAt: '2026-03-01' },
@@ -128,8 +145,8 @@ export default function App() {
   // 7. Modals & Drawers
   const [selectedStockDetail, setSelectedStockDetail] = useState<Stock | null>(null);
   const [isExplainerOpen, setIsExplainerOpen] = useState<boolean>(false);
-  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(true); // 默认开启显示右侧栏
-  const [rightSidebarMode, setRightSidebarMode] = useState<'docked' | 'drawer'>('docked'); // 默认常驻右侧分屏栏
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(false); // 默认收起，点击任意入口即可打开
+  const [rightSidebarMode, setRightSidebarMode] = useState<'docked' | 'drawer'>('drawer'); // 默认全屏覆盖抽屉，保证任何视口立即可见
   const [isExportImageModalOpen, setIsExportImageModalOpen] = useState<boolean>(false);
   const [customExportStocks, setCustomExportStocks] = useState<Stock[] | null>(null);
   const [avatarStyle, setAvatarStyle] = useState<AvatarStyle>('whiteThreeSoldiers');
@@ -140,7 +157,36 @@ export default function App() {
   const [isTargetExportModalOpen, setIsTargetExportModalOpen] = useState<boolean>(false);
   const [targetExportItems, setTargetExportItems] = useState<TargetDividendCalculatedStock[]>([]);
 
-  // 8. 理想股息率备选股票池状态
+  // 8. 用户鉴权状态 (微信 / 邮箱 登录限制)
+  const [userSession, setUserSession] = useState<UserSession | null>(() => loadStoredUserSession());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalPrompt, setAuthModalPrompt] = useState<string | undefined>(undefined);
+
+  const handleLoginSuccess = useCallback((session: UserSession) => {
+    setUserSession(session);
+    try {
+      localStorage.setItem(USER_SESSION_STORAGE_KEY, JSON.stringify(session));
+    } catch (e) {
+      console.error('Failed to save user session', e);
+    }
+    setIsAuthModalOpen(false);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setUserSession(null);
+    try {
+      localStorage.removeItem(USER_SESSION_STORAGE_KEY);
+    } catch (e) {
+      console.error('Failed to remove user session', e);
+    }
+  }, []);
+
+  const handleRequireLogin = useCallback((prompt?: string) => {
+    setAuthModalPrompt(prompt || '当前仅预览前 8 只高股息标的，微信或邮箱一键登录后立即解锁全部标的与高级导出功能');
+    setIsAuthModalOpen(true);
+  }, []);
+
+  // 9. 理想股息率备选股票池状态
   const [watchItems, setWatchItems] = useState<TargetDividendWatchItem[]>(() => loadStoredTargetWatchlist());
 
   // 同步保存备选股票池到 LocalStorage
@@ -566,11 +612,20 @@ export default function App() {
         targetReachedCount={targetReachedCount}
         onOpenPortfolioDrawer={() => {
           setIsRightSidebarOpen(true);
-          setRightSidebarMode('docked');
+          setRightSidebarMode('drawer');
         }}
         portfolioCount={selectedStockCodes.length}
         isRightSidebarOpen={isRightSidebarOpen}
-        onToggleRightSidebar={() => setIsRightSidebarOpen(prev => !prev)}
+        onToggleRightSidebar={() => {
+          setIsRightSidebarOpen(prev => !prev);
+          setRightSidebarMode('drawer');
+        }}
+        userSession={userSession}
+        onOpenAuthModal={() => {
+          setAuthModalPrompt('微信扫码或邮箱快速登录，解锁完整高股息池与分析功能');
+          setIsAuthModalOpen(true);
+        }}
+        onLogout={handleLogout}
       />
 
       {/* Main Container */}
@@ -645,13 +700,19 @@ export default function App() {
               onOpenTargetWatchlist={() => setIsTargetWatchlistOpen(true)}
               onExportTargetWatchlistForSelected={handleExportTargetWatchlistForSelected}
               onOpenExportImage={() => {
+                if (!userSession?.isLoggedIn) {
+                  handleRequireLogin('导出高清估值图片清单需要先登录账号');
+                  return;
+                }
                 setCustomExportStocks(null);
                 setIsExportImageModalOpen(true);
               }}
               onOpenPortfolioDrawer={() => {
                 setIsRightSidebarOpen(true);
-                setRightSidebarMode('docked');
+                setRightSidebarMode('drawer');
               }}
+              isLoggedIn={Boolean(userSession?.isLoggedIn)}
+              onRequireLogin={handleRequireLogin}
             />
           </div>
 
@@ -729,7 +790,7 @@ export default function App() {
             <button
               onClick={() => {
                 setIsRightSidebarOpen(true);
-                setRightSidebarMode('docked');
+                setRightSidebarMode('drawer');
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-semibold text-xs shadow-md transition active:scale-95"
             >
@@ -842,18 +903,17 @@ export default function App() {
         <button
           onClick={() => {
             setIsRightSidebarOpen(true);
-            setRightSidebarMode('docked');
+            setRightSidebarMode('drawer');
           }}
-          className="fixed right-2 sm:right-3.5 top-1/2 -translate-y-1/2 z-40 bg-gradient-to-b from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white px-2.5 py-3 rounded-2xl shadow-2xl flex flex-col items-center gap-1.5 transition-all duration-200 hover:scale-105 group border border-white/30 ring-4 ring-rose-500/25 active:scale-95 cursor-pointer backdrop-blur-md"
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-gradient-to-l from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white pl-3 pr-2 py-3.5 rounded-l-2xl shadow-2xl flex flex-col items-center gap-1.5 transition-all duration-200 hover:scale-105 group border-y border-l border-white/30 ring-4 ring-rose-500/25 active:scale-95 cursor-pointer backdrop-blur-md"
           title="点击展开右侧栏：高股息投资组合模拟器与现金流测算"
         >
           <PieChart className="w-4 h-4 text-white group-hover:rotate-45 transition-transform duration-300 drop-shadow" />
           <div className="flex flex-col items-center text-[11px] font-bold leading-tight py-0.5 text-white drop-shadow select-none tracking-widest">
-            <span>展</span>
-            <span>开</span>
-            <span>右</span>
-            <span>侧</span>
-            <span>栏</span>
+            <span>组</span>
+            <span>合</span>
+            <span>测</span>
+            <span>算</span>
           </div>
           <span className="bg-black/45 text-amber-300 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full border border-white/20 shadow-inner">
             {selectedStockCodes.length}
@@ -914,6 +974,14 @@ export default function App() {
         onUpdateStock={handleUpdateCustomStock}
         onDeleteCustomStock={handleDeleteCustomStock}
         onClearCustomStocks={handleClearAllCustomStocks}
+      />
+
+      {/* 微信 / 邮箱 登录鉴权限制弹窗 */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+        initialPrompt={authModalPrompt}
       />
 
     </div>

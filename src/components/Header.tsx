@@ -1,5 +1,4 @@
-import React from 'react';
-import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart } from 'lucide-react';
+import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart, LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
 import { getTradingStatus } from '../utils/realtimeQuoteService';
@@ -12,6 +11,8 @@ import goldTrendKlineImg from '../assets/images/kline_gold_trend_1787369813990.j
 import iso3dKlineImg from '../assets/images/kline_isometric_3d_1787369825191.jpg';
 import minimalFintechImg from '../assets/images/kline_minimal_fintech_1787369837673.jpg';
 import finBullImg from '../assets/images/fin_gold_logo_1787369381609.jpg';
+
+import { UserSession } from '../types';
 
 interface HeaderProps {
   lastUpdated: string;
@@ -38,6 +39,9 @@ interface HeaderProps {
   portfolioCount?: number;
   isRightSidebarOpen?: boolean;
   onToggleRightSidebar?: () => void;
+  userSession?: UserSession | null;
+  onOpenAuthModal?: () => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -64,7 +68,10 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPortfolioDrawer,
   portfolioCount = 0,
   isRightSidebarOpen = false,
-  onToggleRightSidebar
+  onToggleRightSidebar,
+  userSession = null,
+  onOpenAuthModal,
+  onLogout
 }) => {
   const tradingInfo = getTradingStatus();
 
@@ -314,6 +321,60 @@ export const Header: React.FC<HeaderProps> = ({
               <ImageIcon className="w-3.5 h-3.5" />
               <span>导出图片</span>
             </button>
+
+            {/* User Session Login / Profile Status */}
+            {userSession?.isLoggedIn ? (
+              <div className="flex items-center gap-1.5 pl-1 sm:pl-2 border-l border-slate-700/80">
+                <div 
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs shadow-sm"
+                  title={`当前登录账号：${userSession.name || userSession.email} (${userSession.role || 'VIP会员'})`}
+                >
+                  {userSession.avatar ? (
+                    <img 
+                      src={userSession.avatar} 
+                      alt={userSession.name} 
+                      className="w-5 h-5 rounded-full object-cover border border-amber-400/50" 
+                    />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-[10px] border border-amber-500/30">
+                      {userSession.name ? userSession.name.charAt(0) : 'U'}
+                    </div>
+                  )}
+                  <div className="flex flex-col text-left">
+                    <span className="text-[11px] font-semibold text-slate-200 leading-none flex items-center gap-1">
+                      {userSession.name || '已登录用户'}
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                        VIP
+                      </span>
+                    </span>
+                    <span className="text-[9px] text-emerald-400 font-mono mt-0.5">
+                      {userSession.loginMethod === 'wechat' ? '微信已授权' : '邮箱已认证'}
+                    </span>
+                  </div>
+                </div>
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                    title="退出当前登录"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={onOpenAuthModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-md shadow-emerald-950/40 border border-emerald-400/40 transition active:scale-95 group"
+                title="登录后解锁全市场 5,652 只股票、全部综合估值及高清导出功能（支持微信扫码与邮箱快速登录）"
+              >
+                <LogIn className="w-3.5 h-3.5 text-emerald-200 group-hover:scale-110 transition-transform" />
+                <span>登录 / 注册</span>
+                <span className="text-[10px] bg-black/30 px-1 py-0.2 rounded text-emerald-200 font-normal">
+                  微信·邮箱
+                </span>
+              </button>
+            )}
 
           </div>
         </div>

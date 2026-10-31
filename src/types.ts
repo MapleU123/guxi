@@ -314,3 +314,15 @@ export interface TargetDividendCalculatedStock {
   robustProfile?: RobustBuySafetyProfile;
 }
 
+export interface UserSession {
+  isLoggedIn: boolean;
+  loginMethod: 'wechat' | 'email';
+  userId: string;
+  name: string;
+  avatar: string;
+  account: string; // e.g. 微信号或邮箱
+  email?: string;
+  wechatNickname?: string;
+  loginAt: string;
+  role: 'VIP会员' | '实名认证用户';
+}

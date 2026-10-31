@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ArrowUpDown, ArrowUp, ArrowDown, Award, TrendingUp, TrendingDown, 
   ExternalLink, ShieldCheck, Flame, Star, Info, ChevronRight, CheckCircle2,
-  Image as ImageIcon, Sparkles, Target, BarChart2, PieChart, ChevronLeft, SlidersHorizontal
+  Image as ImageIcon, Sparkles, Target, BarChart2, PieChart, ChevronLeft, SlidersHorizontal, Lock
 } from 'lucide-react';
 import { Stock, SortConfig, SortField } from '../types';
 import { calculateBuyOpportunityScore, getStockValuationStatus, getOrComputeStockPEPercentile } from '../utils/calculator';
@@ -25,6 +25,8 @@ interface StockTableProps {
   onOpenTargetWatchlist?: () => void;
   onExportTargetWatchlistForSelected?: () => void;
   onOpenPortfolioDrawer?: () => void;
+  isLoggedIn?: boolean;
+  onRequireLogin?: (prompt?: string) => void;
 }
 
 export const StockTable: React.FC<StockTableProps> = ({
@@ -43,7 +45,9 @@ export const StockTable: React.FC<StockTableProps> = ({
   onToggleTargetWatchlist,
   onOpenTargetWatchlist,
   onExportTargetWatchlistForSelected,
-  onOpenPortfolioDrawer
+  onOpenPortfolioDrawer,
+  isLoggedIn = false,
+  onRequireLogin
 }) => {
   const [hoveredScoreStock, setHoveredScoreStock] = useState<string | null>(null);
   const [tableScrollWidth, setTableScrollWidth] = useState<number>(1800);
@@ -129,6 +133,8 @@ export const StockTable: React.FC<StockTableProps> = ({
   };
 
   const isAllSelected = stocks.length > 0 && selectedStockCodes.length === stocks.length;
+  const displayStocks = isLoggedIn ? stocks : stocks.slice(0, 8);
+  const hiddenCount = Math.max(0, stocks.length - displayStocks.length);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col">
@@ -136,14 +142,20 @@ export const StockTable: React.FC<StockTableProps> = ({
       {/* Table Toolbar */}
       <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-3">
-          <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+          <span className="font-semibold text-slate-200 flex items-center gap-1.5 flex-wrap">
             <span className="w-2 h-2 rounded-full bg-rose-500"></span>
             已筛选标的清单
             <span className="bg-slate-800 px-2 py-0.5 rounded text-rose-400 font-bold text-xs border border-slate-700">
               共 {stocks.length} 只
             </span>
+            {!isLoggedIn && stocks.length > 8 && (
+              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded text-[11px] font-medium flex items-center gap-1">
+                <Lock className="w-3 h-3" />
+                <span>未登录仅预览前 8 只</span>
+              </span>
+            )}
           </span>
-          <span className="text-slate-500">|</span>
+          <span className="text-slate-500 hidden sm:inline">|</span>
           <span className="text-slate-400 text-[11px] hidden sm:inline">
             点击任意列头可按该维度快速排序，默认按龙头综合分降序
           </span>
@@ -174,7 +186,13 @@ export const StockTable: React.FC<StockTableProps> = ({
 
           {onOpenExportImage && (
             <button
-              onClick={onOpenExportImage}
+              onClick={() => {
+                if (!isLoggedIn) {
+                  onRequireLogin?.('导出高清估值图片功能需登录后使用，支持微信扫码或邮箱快速登录');
+                  return;
+                }
+                onOpenExportImage();
+              }}
               className="px-2.5 py-1 rounded text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition flex items-center gap-1 active:scale-95"
               title="导出当前表格为高保真图片"
             >
@@ -574,11 +592,12 @@ export const StockTable: React.FC<StockTableProps> = ({
                 </td>
               </tr>
             ) : (
-              stocks.map((stock, index) => {
-                const isSelected = selectedStockCodes.includes(stock.code);
-                const isUp = stock.changePercent >= 0;
+              <>
+                {displayStocks.map((stock, index) => {
+                  const isSelected = selectedStockCodes.includes(stock.code);
+                  const isUp = stock.changePercent >= 0;
 
-                return (
+                  return (
                   <tr 
                     key={stock.code}
                     className={`hover:bg-slate-800/60 transition group cursor-pointer ${
@@ -904,8 +923,60 @@ export const StockTable: React.FC<StockTableProps> = ({
 
                   </tr>
                 );
-              })
-            )}
+              })}
+
+              {/* Locked Rows & Login Requirement Prompt */}
+              {hiddenCount > 0 && !isLoggedIn && (
+                <tr>
+                  <td colSpan={17} className="p-0 border-t border-slate-800 bg-slate-950/80">
+                    <div className="p-6 sm:p-8 flex flex-col items-center justify-center text-center space-y-4 border-b border-slate-800 shadow-2xl relative overflow-hidden">
+                      {/* Background light glow */}
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-32 bg-rose-600/10 blur-3xl rounded-full pointer-events-none"></div>
+
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500/20 via-amber-500/20 to-emerald-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl shadow-amber-950/40">
+                        <Lock className="w-6 h-6 animate-pulse" />
+                      </div>
+                      
+                      <div className="max-w-2xl space-y-1.5 z-10">
+                        <h4 className="text-base sm:text-lg font-bold text-slate-100 flex items-center justify-center gap-2 flex-wrap">
+                          <span>登录即可解锁查看更多高股息标的</span>
+                          <span className="text-xs bg-rose-500/20 text-rose-300 px-2.5 py-0.5 rounded-full border border-rose-500/30 font-mono font-bold">
+                            剩余 {hiddenCount} 只核心标的已锁定
+                          </span>
+                        </h4>
+                        <p className="text-xs text-slate-400 leading-relaxed max-w-xl mx-auto">
+                          当前筛选池共匹配 <strong className="text-slate-200 font-mono">{stocks.length}</strong> 只标的，未登录状态下默认展示排名前 8 只龙头标杆。
+                          登录后可立即无限制解锁全部 {stocks.length} 只标的及大A 5,652 支股票数据、5年PE历史分位估值矩阵、稳妥买入安全价推导及组合现金流测算。
+                        </p>
+                      </div>
+
+                      {/* Action Buttons: WeChat & Email */}
+                      <div className="flex flex-wrap items-center justify-center gap-3 pt-1 z-10">
+                        <button
+                          type="button"
+                          onClick={() => onRequireLogin?.('使用微信扫码即可一键解锁查看全部标的')}
+                          className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/50 flex items-center gap-2 transition active:scale-95 cursor-pointer"
+                        >
+                          <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                            <path d="M8.5 2C4.36 2 1 4.92 1 8.5c0 1.95.96 3.7 2.5 4.94L2.8 16.5l3.24-1.62c.76.24 1.58.37 2.46.37.24 0 .47-.01.7-.03-.2-.55-.3-1.14-.3-1.75 0-3.69 3.36-6.68 7.5-6.68.21 0 .42.01.62.03C15.86 3.99 12.44 2 8.5 2zm-2.25 4.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm4.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM15.5 8.5c-3.59 0-6.5 2.46-6.5 5.5 0 3.03 2.91 5.5 6.5 5.5.76 0 1.48-.11 2.14-.32l2.81 1.4-.7-2.65c1.33-1.07 2.25-2.46 2.25-3.93 0-3.04-2.91-5.5-6.5-5.5zm-2 3.75a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                          </svg>
+                          <span>微信扫码快速登录解锁</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onRequireLogin?.('使用邮箱验证码或密码即可登录解锁查看全部标的')}
+                          className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 font-bold text-xs shadow-md flex items-center gap-2 transition active:scale-95 cursor-pointer"
+                        >
+                          <span>邮箱账号登录 / 注册</span>
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </>
+          )}
           </tbody>
         </table>
       </div>
