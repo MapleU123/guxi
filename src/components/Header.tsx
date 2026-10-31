@@ -36,6 +36,8 @@ interface HeaderProps {
   targetReachedCount?: number;
   onOpenPortfolioDrawer?: () => void;
   portfolioCount?: number;
+  isRightSidebarOpen?: boolean;
+  onToggleRightSidebar?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -60,13 +62,15 @@ export const Header: React.FC<HeaderProps> = ({
   targetWatchlistCount = 0,
   targetReachedCount = 0,
   onOpenPortfolioDrawer,
-  portfolioCount = 0
+  portfolioCount = 0,
+  isRightSidebarOpen = false,
+  onToggleRightSidebar
 }) => {
   const tradingInfo = getTradingStatus();
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between py-3 gap-3">
           
           {/* Logo & Main Title */}
@@ -238,8 +242,28 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* 组合模拟测算 (右侧栏) Button */}
-            {onOpenPortfolioDrawer && (
+            {/* 组合模拟测算 (右侧栏) Toggle Button */}
+            {onToggleRightSidebar ? (
+              <button
+                onClick={onToggleRightSidebar}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border shadow-sm transition active:scale-95 group ${
+                  isRightSidebarOpen
+                    ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white border-rose-400 shadow-rose-950/50 ring-2 ring-rose-500/30'
+                    : 'bg-slate-800 hover:bg-slate-700 text-rose-300 border-rose-500/30'
+                }`}
+                title={isRightSidebarOpen ? "右侧栏当前已常驻显示，点击可收起" : "右侧栏已收起，点击显示高股息组合模拟器与现金流测算"}
+              >
+                <PieChart className="w-3.5 h-3.5 text-rose-200 group-hover:rotate-45 transition duration-300" />
+                <span>{isRightSidebarOpen ? '收起右侧栏' : '显示右侧栏'}</span>
+                {portfolioCount > 0 && (
+                  <span className={`px-1.5 py-0.2 rounded-full font-mono text-[10px] font-bold ${
+                    isRightSidebarOpen ? 'bg-black/40 text-amber-300' : 'bg-rose-500 text-white'
+                  }`}>
+                    {portfolioCount}
+                  </span>
+                )}
+              </button>
+            ) : onOpenPortfolioDrawer ? (
               <button
                 onClick={onOpenPortfolioDrawer}
                 className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-rose-600/20 to-amber-600/20 hover:from-rose-600/30 hover:to-amber-600/30 text-rose-300 border border-rose-500/40 shadow-sm transition active:scale-95 group"
@@ -253,7 +277,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </span>
                 )}
               </button>
-            )}
+            ) : null}
 
             {/* Custom Import Stocks Button */}
             <button

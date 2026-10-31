@@ -128,7 +128,8 @@ export default function App() {
   // 7. Modals & Drawers
   const [selectedStockDetail, setSelectedStockDetail] = useState<Stock | null>(null);
   const [isExplainerOpen, setIsExplainerOpen] = useState<boolean>(false);
-  const [isPortfolioDrawerOpen, setIsPortfolioDrawerOpen] = useState<boolean>(false);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(true); // 默认开启显示右侧栏
+  const [rightSidebarMode, setRightSidebarMode] = useState<'docked' | 'drawer'>('docked'); // 默认常驻右侧分屏栏
   const [isExportImageModalOpen, setIsExportImageModalOpen] = useState<boolean>(false);
   const [customExportStocks, setCustomExportStocks] = useState<Stock[] | null>(null);
   const [avatarStyle, setAvatarStyle] = useState<AvatarStyle>('whiteThreeSoldiers');
@@ -563,12 +564,19 @@ export default function App() {
         onOpenTargetWatchlist={() => setIsTargetWatchlistOpen(true)}
         targetWatchlistCount={watchItems.length}
         targetReachedCount={targetReachedCount}
-        onOpenPortfolioDrawer={() => setIsPortfolioDrawerOpen(true)}
+        onOpenPortfolioDrawer={() => {
+          setIsRightSidebarOpen(true);
+          setRightSidebarMode('docked');
+        }}
         portfolioCount={selectedStockCodes.length}
+        isRightSidebarOpen={isRightSidebarOpen}
+        onToggleRightSidebar={() => setIsRightSidebarOpen(prev => !prev)}
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className={`flex-1 w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 transition-all duration-300 ${
+        isRightSidebarOpen && rightSidebarMode === 'docked' ? 'max-w-[1920px]' : 'max-w-7xl'
+      }`}>
         
         {/* Strategy Presets Bar */}
         <StrategyPresets
@@ -618,28 +626,55 @@ export default function App() {
           onOpenMarketUniverse={() => setIsMarketUniverseOpen(true)}
         />
 
-        {/* Stock Result Table */}
-        <StockTable
-          stocks={processedStocks}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          onSelectStock={(stock) => setSelectedStockDetail(stock)}
-          selectedStockCodes={selectedStockCodes}
-          onToggleSelectStock={handleToggleSelectStock}
-          onToggleSelectAll={handleToggleSelectAll}
-          searchQuery={criteria.searchQuery}
-          onClearSearch={() => setCriteria((prev) => ({ ...prev, searchQuery: '' }))}
-          onAddCustomStock={handleAddCustomStocks}
-          targetWatchlistCodes={watchItems.map(w => w.code)}
-          onToggleTargetWatchlist={handleToggleTargetWatchlist}
-          onOpenTargetWatchlist={() => setIsTargetWatchlistOpen(true)}
-          onExportTargetWatchlistForSelected={handleExportTargetWatchlistForSelected}
-          onOpenExportImage={() => {
-            setCustomExportStocks(null);
-            setIsExportImageModalOpen(true);
-          }}
-          onOpenPortfolioDrawer={() => setIsPortfolioDrawerOpen(true)}
-        />
+        {/* Main Content Flex Section: Left Stock Table, Right Sidebar */}
+        <div className="flex flex-col xl:flex-row items-start gap-6">
+          <div className="flex-1 min-w-0 w-full">
+            <StockTable
+              stocks={processedStocks}
+              sortConfig={sortConfig}
+              onSort={handleSort}
+              onSelectStock={(stock) => setSelectedStockDetail(stock)}
+              selectedStockCodes={selectedStockCodes}
+              onToggleSelectStock={handleToggleSelectStock}
+              onToggleSelectAll={handleToggleSelectAll}
+              searchQuery={criteria.searchQuery}
+              onClearSearch={() => setCriteria((prev) => ({ ...prev, searchQuery: '' }))}
+              onAddCustomStock={handleAddCustomStocks}
+              targetWatchlistCodes={watchItems.map(w => w.code)}
+              onToggleTargetWatchlist={handleToggleTargetWatchlist}
+              onOpenTargetWatchlist={() => setIsTargetWatchlistOpen(true)}
+              onExportTargetWatchlistForSelected={handleExportTargetWatchlistForSelected}
+              onOpenExportImage={() => {
+                setCustomExportStocks(null);
+                setIsExportImageModalOpen(true);
+              }}
+              onOpenPortfolioDrawer={() => {
+                setIsRightSidebarOpen(true);
+                setRightSidebarMode('docked');
+              }}
+            />
+          </div>
+
+          {/* DOCKED RIGHT SIDEBAR (常驻右侧分屏栏) */}
+          {isRightSidebarOpen && rightSidebarMode === 'docked' && (
+            <DividendPortfolioDrawer
+              isOpen={true}
+              mode="docked"
+              onToggleMode={() => setRightSidebarMode('drawer')}
+              onClose={() => setIsRightSidebarOpen(false)}
+              selectedStocks={selectedPortfolioStocks}
+              onRemoveStock={handleRemoveFromPortfolio}
+              onClearAll={handleClearPortfolio}
+              onAddPresetStocks={() => {
+                setSelectedStockCodes(['601088', '600036', '600900', '000651', '601225']);
+              }}
+              onAddAllFiltered={() => {
+                setSelectedStockCodes(processedStocks.map(s => s.code));
+              }}
+              filteredCount={processedStocks.length}
+            />
+          )}
+        </div>
 
         {/* Bottom Educational Banner */}
         <div className="mt-8 p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -692,7 +727,10 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setIsPortfolioDrawerOpen(true)}
+              onClick={() => {
+                setIsRightSidebarOpen(true);
+                setRightSidebarMode('docked');
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-semibold text-xs shadow-md transition active:scale-95"
             >
               <PieChart className="w-3.5 h-3.5" />
@@ -799,39 +837,49 @@ export default function App() {
         onClose={() => setIsExplainerOpen(false)}
       />
 
-      {/* Persistent Right Edge Trigger Tab (随时一键开启右侧抽屉栏) */}
-      <button
-        onClick={() => setIsPortfolioDrawerOpen(true)}
-        className="fixed right-2 sm:right-3.5 top-1/2 -translate-y-1/2 z-50 bg-gradient-to-b from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white px-2.5 py-3 rounded-2xl shadow-2xl flex flex-col items-center gap-1.5 transition-all duration-200 hover:scale-105 group border border-white/30 ring-4 ring-rose-500/25 active:scale-95 cursor-pointer backdrop-blur-md"
-        title="点击展开右侧栏：高股息投资组合模拟器与现金流测算"
-      >
-        <PieChart className="w-4 h-4 text-white group-hover:rotate-45 transition-transform duration-300 drop-shadow" />
-        <div className="flex flex-col items-center text-[11px] font-bold leading-tight py-0.5 text-white drop-shadow select-none tracking-widest">
-          <span>组</span>
-          <span>合</span>
-          <span>测</span>
-          <span>算</span>
-        </div>
-        <span className="bg-black/45 text-amber-300 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full border border-white/20 shadow-inner">
-          {selectedStockCodes.length}
-        </span>
-      </button>
+      {/* Persistent Right Edge Trigger Tab (当右侧栏收起时显示，点击一键展开) */}
+      {!isRightSidebarOpen && (
+        <button
+          onClick={() => {
+            setIsRightSidebarOpen(true);
+            setRightSidebarMode('docked');
+          }}
+          className="fixed right-2 sm:right-3.5 top-1/2 -translate-y-1/2 z-40 bg-gradient-to-b from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white px-2.5 py-3 rounded-2xl shadow-2xl flex flex-col items-center gap-1.5 transition-all duration-200 hover:scale-105 group border border-white/30 ring-4 ring-rose-500/25 active:scale-95 cursor-pointer backdrop-blur-md"
+          title="点击展开右侧栏：高股息投资组合模拟器与现金流测算"
+        >
+          <PieChart className="w-4 h-4 text-white group-hover:rotate-45 transition-transform duration-300 drop-shadow" />
+          <div className="flex flex-col items-center text-[11px] font-bold leading-tight py-0.5 text-white drop-shadow select-none tracking-widest">
+            <span>展</span>
+            <span>开</span>
+            <span>右</span>
+            <span>侧</span>
+            <span>栏</span>
+          </div>
+          <span className="bg-black/45 text-amber-300 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full border border-white/20 shadow-inner">
+            {selectedStockCodes.length}
+          </span>
+        </button>
+      )}
 
-      {/* Dividend Portfolio Drawer (右侧抽屉栏) */}
-      <DividendPortfolioDrawer
-        isOpen={isPortfolioDrawerOpen}
-        onClose={() => setIsPortfolioDrawerOpen(false)}
-        selectedStocks={selectedPortfolioStocks}
-        onRemoveStock={handleRemoveFromPortfolio}
-        onClearAll={handleClearPortfolio}
-        onAddPresetStocks={() => {
-          setSelectedStockCodes(['601088', '600036', '600900', '000651', '601225']);
-        }}
-        onAddAllFiltered={() => {
-          setSelectedStockCodes(processedStocks.map(s => s.code));
-        }}
-        filteredCount={processedStocks.length}
-      />
+      {/* Dividend Portfolio Drawer (全屏覆盖抽屉模式) */}
+      {isRightSidebarOpen && rightSidebarMode === 'drawer' && (
+        <DividendPortfolioDrawer
+          isOpen={true}
+          mode="drawer"
+          onToggleMode={() => setRightSidebarMode('docked')}
+          onClose={() => setIsRightSidebarOpen(false)}
+          selectedStocks={selectedPortfolioStocks}
+          onRemoveStock={handleRemoveFromPortfolio}
+          onClearAll={handleClearPortfolio}
+          onAddPresetStocks={() => {
+            setSelectedStockCodes(['601088', '600036', '600900', '000651', '601225']);
+          }}
+          onAddAllFiltered={() => {
+            setSelectedStockCodes(processedStocks.map(s => s.code));
+          }}
+          filteredCount={processedStocks.length}
+        />
+      )}
 
       {/* Dividend Anomaly Alert History Modal */}
       <DividendAlertHistoryModal
