@@ -182,7 +182,16 @@ export default function App() {
     }
   }, []);
 
-  const handleRequireLogin = useCallback((prompt?: string) => {
+  const [authModalTab, setAuthModalTab] = useState<'wechat' | 'email'>('wechat');
+
+  const handleOpenAuthModal = useCallback((tab: 'wechat' | 'email' = 'wechat') => {
+    setAuthModalTab(tab);
+    setAuthModalPrompt(tab === 'email' ? '输入电子邮箱账号，免关注即可登录并解锁全站 5,652 只标的与全部功能' : '微信扫码关注公众号，回复配对码即可免密解锁全部权限');
+    setIsAuthModalOpen(true);
+  }, []);
+
+  const handleRequireLogin = useCallback((prompt?: string, tab: 'wechat' | 'email' = 'wechat') => {
+    setAuthModalTab(tab);
     setAuthModalPrompt(prompt || '当前仅预览前 8 只高股息标的，微信或邮箱一键登录后立即解锁全部标的与高级导出功能');
     setIsAuthModalOpen(true);
   }, []);
@@ -630,10 +639,7 @@ export default function App() {
           setRightSidebarMode('drawer');
         }}
         userSession={userSession}
-        onOpenAuthModal={() => {
-          setAuthModalPrompt('微信扫码或邮箱快速登录，解锁完整高股息池与分析功能');
-          setIsAuthModalOpen(true);
-        }}
+        onOpenAuthModal={handleOpenAuthModal}
         onLogout={handleLogout}
       />
 
@@ -1002,6 +1008,7 @@ export default function App() {
         onClose={() => setIsAuthModalOpen(false)}
         onLoginSuccess={handleLoginSuccess}
         initialPrompt={authModalPrompt}
+        initialTab={authModalTab}
       />
 
     </div>

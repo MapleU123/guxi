@@ -3,7 +3,7 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, Award, TrendingUp, TrendingDown, 
   ExternalLink, ShieldCheck, Flame, Star, Info, ChevronRight, CheckCircle2,
   Image as ImageIcon, Sparkles, Target, BarChart2, PieChart, ChevronLeft, SlidersHorizontal, Lock,
-  Copy, Check, Radio
+  Copy, Check, Radio, Mail
 } from 'lucide-react';
 import { Stock, SortConfig, SortField, UserSession } from '../types';
 import { calculateBuyOpportunityScore, getStockValuationStatus, getOrComputeStockPEPercentile } from '../utils/calculator';
@@ -29,7 +29,7 @@ interface StockTableProps {
   onExportTargetWatchlistForSelected?: () => void;
   onOpenPortfolioDrawer?: () => void;
   isLoggedIn?: boolean;
-  onRequireLogin?: (prompt?: string) => void;
+  onRequireLogin?: (prompt?: string, tab?: 'wechat' | 'email') => void;
   onLoginSuccess?: (session: UserSession) => void;
 }
 
@@ -1103,13 +1103,14 @@ export const StockTable: React.FC<StockTableProps> = ({
                               </ul>
                             </div>
 
-                            <div className="pt-2 border-t border-slate-800 text-center">
+                            <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5 text-center">
                               <button
                                 type="button"
-                                onClick={() => onRequireLogin?.('使用邮箱验证码或密码即可登录解锁查看全部标的')}
-                                className="text-[11px] text-slate-400 hover:text-slate-200 underline underline-offset-2 transition cursor-pointer"
+                                onClick={() => onRequireLogin?.('使用电子邮箱账号，输入验证码或密码即可登录解锁查看全部标的', 'email')}
+                                className="w-full py-1.5 px-3 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-sm"
                               >
-                                备选方式：使用邮箱登录
+                                <Mail className="w-3.5 h-3.5 text-rose-400" />
+                                <span>免关注：直接使用邮箱登录</span>
                               </button>
                             </div>
                           </div>

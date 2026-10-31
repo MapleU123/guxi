@@ -1,4 +1,4 @@
-import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart, LogIn, LogOut, User as UserIcon } from 'lucide-react';
+import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart, LogIn, LogOut, User as UserIcon, Mail } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
 import { getTradingStatus } from '../utils/realtimeQuoteService';
@@ -41,7 +41,7 @@ interface HeaderProps {
   isRightSidebarOpen?: boolean;
   onToggleRightSidebar?: () => void;
   userSession?: UserSession | null;
-  onOpenAuthModal?: () => void;
+  onOpenAuthModal?: (tab?: 'wechat' | 'email') => void;
   onLogout?: () => void;
 }
 
@@ -79,24 +79,34 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
-      {/* website-to-wechat Top Conversion Announcement Bar */}
+      {/* website-to-wechat & Email Top Conversion Announcement Bar */}
       {!userSession?.isLoggedIn && (
-        <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 border-b border-emerald-500/30 px-4 py-1.5 text-xs text-slate-300">
+        <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-rose-950/80 border-b border-emerald-500/30 px-4 py-1.5 text-xs text-slate-300">
           <div className="max-w-[1920px] mx-auto w-full flex items-center justify-between gap-3 text-[11px]">
             <div className="flex items-center gap-2 truncate">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-              <span className="text-emerald-300 font-semibold shrink-0">关注公众号即登录：</span>
+              <span className="text-emerald-300 font-semibold shrink-0">快捷登录通道：</span>
               <span className="text-slate-300 truncate">
-                微信关注【<strong>{mpConfig.name}</strong>】回复网页配对码，免密解锁 5,652 只大A标的全景透析与高清底表导出
+                关注公众号【<strong>{mpConfig.name}</strong>】回复配对码，或使用<strong>电子邮箱</strong>直接登录，免密解锁 5,652 只大A标的全景透析与高清底表导出
               </span>
             </div>
-            <button
-              onClick={onOpenAuthModal}
-              className="text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2 shrink-0 flex items-center gap-1 transition cursor-pointer"
-            >
-              <span>获取配对码</span>
-              <span>&rarr;</span>
-            </button>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                onClick={() => onOpenAuthModal?.('email')}
+                className="text-rose-400 hover:text-rose-300 font-semibold underline underline-offset-2 flex items-center gap-1 transition cursor-pointer"
+              >
+                <Mail className="w-3 h-3" />
+                <span>邮箱登录</span>
+              </button>
+              <span className="text-slate-600">|</span>
+              <button
+                onClick={() => onOpenAuthModal?.('wechat')}
+                className="text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2 flex items-center gap-1 transition cursor-pointer"
+              >
+                <span>公众号配对码</span>
+                <span>&rarr;</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -393,19 +403,30 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </div>
             ) : (
-              <button
-                onClick={onOpenAuthModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-md shadow-emerald-950/40 border border-emerald-400/40 transition active:scale-95 group cursor-pointer"
-                title={`关注微信公众号【${mpConfig.name}】回复配对码，免密解锁全站 5,652 支股票数据与高清底表导出`}
-              >
-                <svg className="w-3.5 h-3.5 fill-current text-emerald-100 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
-                  <path d="M8.5 2C4.36 2 1 4.92 1 8.5c0 1.95.96 3.7 2.5 4.94L2.8 16.5l3.24-1.62c.76.24 1.58.37 2.46.37.24 0 .47-.01.7-.03-.2-.55-.3-1.14-.3-1.75 0-3.69 3.36-6.68 7.5-6.68.21 0 .42.01.62.03C15.86 3.99 12.44 2 8.5 2zm-2.25 4.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm4.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM15.5 8.5c-3.59 0-6.5 2.46-6.5 5.5 0 3.03 2.91 5.5 6.5 5.5.76 0 1.48-.11 2.14-.32l2.81 1.4-.7-2.65c1.33-1.07 2.25-2.46 2.25-3.93 0-3.04-2.91-5.5-6.5-5.5zm-2 3.75a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
-                </svg>
-                <span>公众号关注登录</span>
-                <span className="text-[10px] bg-black/35 px-1 py-0.2 rounded text-emerald-200 font-mono font-medium">
-                  配对码
-                </span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onOpenAuthModal?.('email')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 hover:border-rose-500/50 transition active:scale-95 group cursor-pointer shadow-sm"
+                  title="使用电子邮箱账号，输入验证码或密码即可免关注直接登录"
+                >
+                  <Mail className="w-3.5 h-3.5 text-rose-400 group-hover:scale-110 transition-transform" />
+                  <span>邮箱登录</span>
+                </button>
+
+                <button
+                  onClick={() => onOpenAuthModal?.('wechat')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-md shadow-emerald-950/40 border border-emerald-400/40 transition active:scale-95 group cursor-pointer"
+                  title={`关注微信公众号【${mpConfig.name}】回复配对码，免密解锁全站 5,652 支股票数据与高清底表导出`}
+                >
+                  <svg className="w-3.5 h-3.5 fill-current text-emerald-100 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+                    <path d="M8.5 2C4.36 2 1 4.92 1 8.5c0 1.95.96 3.7 2.5 4.94L2.8 16.5l3.24-1.62c.76.24 1.58.37 2.46.37.24 0 .47-.01.7-.03-.2-.55-.3-1.14-.3-1.75 0-3.69 3.36-6.68 7.5-6.68.21 0 .42.01.62.03C15.86 3.99 12.44 2 8.5 2zm-2.25 4.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm4.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM15.5 8.5c-3.59 0-6.5 2.46-6.5 5.5 0 3.03 2.91 5.5 6.5 5.5.76 0 1.48-.11 2.14-.32l2.81 1.4-.7-2.65c1.33-1.07 2.25-2.46 2.25-3.93 0-3.04-2.91-5.5-6.5-5.5zm-2 3.75a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                  </svg>
+                  <span>公众号关注登录</span>
+                  <span className="text-[10px] bg-black/35 px-1 py-0.2 rounded text-emerald-200 font-mono font-medium">
+                    配对码
+                  </span>
+                </button>
+              </div>
             )}
 
           </div>

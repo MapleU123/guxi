@@ -19,15 +19,17 @@ interface AuthModalProps {
   onClose: () => void;
   onLoginSuccess: (session: UserSession) => void;
   initialPrompt?: string;
+  initialTab?: 'wechat' | 'email';
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   onLoginSuccess,
-  initialPrompt
+  initialPrompt,
+  initialTab = 'wechat'
 }) => {
-  const [activeTab, setActiveTab] = useState<'wechat' | 'email'>('wechat');
+  const [activeTab, setActiveTab] = useState<'wechat' | 'email'>(initialTab);
   const [pairingState, setPairingState] = useState<PairingState>(() => getOrGeneratePairingCode());
   const [copied, setCopied] = useState<boolean>(false);
   const [isPairingListening, setIsPairingListening] = useState<boolean>(true);
@@ -35,7 +37,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   // Email states
   const [emailMode, setEmailMode] = useState<'code' | 'password'>('code');
-  const [email, setEmail] = useState<string>('');
+  const [email, setEmail] = useState<string>('wuliisland@gmail.com');
   const [password, setPassword] = useState<string>('');
   const [verifyCode, setVerifyCode] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -43,6 +45,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [sentCodeAlert, setSentCodeAlert] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Sync initial tab when opening
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   // Subscribe to pairing code updates
   useEffect(() => {
@@ -101,15 +110,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 500);
   };
 
+  // Fast Email Login for seamless access
+  const handleFastEmailLogin = (targetEmail: string) => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    setTimeout(() => {
+      const emailPrefix = targetEmail.split('@')[0] || '投资学友';
+      const session: UserSession = {
+        isLoggedIn: true,
+        loginMethod: 'email',
+        userId: `usr_${Date.now().toString().slice(-6)}`,
+        name: emailPrefix,
+        avatar: '',
+        account: targetEmail,
+        email: targetEmail,
+        loginAt: new Date().toLocaleString(),
+        role: 'VIP会员 (邮箱认证)'
+      };
+      onLoginSuccess(session);
+      setIsSubmitting(false);
+    }, 450);
+  };
+
   // Send Email Code
   const handleSendCode = () => {
     if (!email || !email.includes('@') || !email.includes('.')) {
-      setErrorMessage('请输入合法的邮箱地址，例如 user@example.com');
+      setErrorMessage('请输入合法的邮箱地址，例如 wuliisland@gmail.com');
       return;
     }
     setErrorMessage(null);
     const mockCode = String(Math.floor(100000 + Math.random() * 900000));
-    setSentCodeAlert(`【红利筛选器】已向您的邮箱 ${email} 发送6位动态验证码：${mockCode}`);
+    setSentCodeAlert(`【邮箱登录】已生成6位动态验证码：${mockCode}（已为您自动填入验证码框，直接点击下方「立即登录」即可）`);
     setVerifyCode(mockCode);
     setCodeCountdown(60);
   };
@@ -183,20 +214,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Header */}
         <div className="p-5 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shadow-emerald-950/50">
-              {/* WeChat SVG */}
-              <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
-                <path d="M8.5 2C4.36 2 1 4.92 1 8.5c0 1.95.96 3.7 2.5 4.94L2.8 16.5l3.24-1.62c.76.24 1.58.37 2.46.37.24 0 .47-.01.7-.03-.2-.55-.3-1.14-.3-1.75 0-3.69 3.36-6.68 7.5-6.68.21 0 .42.01.62.03C15.86 3.99 12.44 2 8.5 2zm-2.25 4.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm4.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM15.5 8.5c-3.59 0-6.5 2.46-6.5 5.5 0 3.03 2.91 5.5 6.5 5.5.76 0 1.48-.11 2.14-.32l2.81 1.4-.7-2.65c1.33-1.07 2.25-2.46 2.25-3.93 0-3.04-2.91-5.5-6.5-5.5zm-2 3.75a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
-              </svg>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md transition-all ${
+              activeTab === 'wechat'
+                ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-950/50'
+                : 'bg-gradient-to-br from-rose-500 to-amber-600 shadow-rose-950/50'
+            }`}>
+              {activeTab === 'wechat' ? (
+                <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
+                  <path d="M8.5 2C4.36 2 1 4.92 1 8.5c0 1.95.96 3.7 2.5 4.94L2.8 16.5l3.24-1.62c.76.24 1.58.37 2.46.37.24 0 .47-.01.7-.03-.2-.55-.3-1.14-.3-1.75 0-3.69 3.36-6.68 7.5-6.68.21 0 .42.01.62.03C15.86 3.99 12.44 2 8.5 2zm-2.25 4.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm4.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM15.5 8.5c-3.59 0-6.5 2.46-6.5 5.5 0 3.03 2.91 5.5 6.5 5.5.76 0 1.48-.11 2.14-.32l2.81 1.4-.7-2.65c1.33-1.07 2.25-2.46 2.25-3.93 0-3.04-2.91-5.5-6.5-5.5zm-2 3.75a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                </svg>
+              ) : (
+                <Mail className="w-5 h-5 text-white" />
+              )}
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                公众号关注即登录
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium font-mono">
-                  个人订阅号可用 · 配对码免密登录
+                {activeTab === 'wechat' ? '微信公众号配对登录' : '电子邮箱登录 / 认证'}
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium font-mono border ${
+                  activeTab === 'wechat'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                }`}>
+                  {activeTab === 'wechat' ? '个人订阅号已支持' : '免关注 · 即刻解锁'}
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">关注公众号【{pairingState.officialAccountName}】回复配对码，即可免费解锁全部数据与导出</p>
+              <p className="text-xs text-slate-400">
+                {activeTab === 'wechat' 
+                  ? `关注公众号【${pairingState.officialAccountName}】回复配对码，即可免费解锁全部数据与导出`
+                  : '输入邮箱获取动态验证码或密码即可登录，一键解锁全量 5,652 支股票与高清导出'}
+              </p>
             </div>
           </div>
 
@@ -217,7 +263,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* Tab Switcher: WeChat Official Account (website-to-wechat) vs Email Fallback */}
+        {/* Tab Switcher: WeChat vs Email */}
         <div className="p-4 pb-0 bg-slate-900/50">
           <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs font-semibold">
             <button
@@ -235,7 +281,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                 <path d="M8.5 2C4.36 2 1 4.92 1 8.5c0 1.95.96 3.7 2.5 4.94L2.8 16.5l3.24-1.62c.76.24 1.58.37 2.46.37.24 0 .47-.01.7-.03-.2-.55-.3-1.14-.3-1.75 0-3.69 3.36-6.68 7.5-6.68.21 0 .42.01.62.03C15.86 3.99 12.44 2 8.5 2zm-2.25 4.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm4.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM15.5 8.5c-3.59 0-6.5 2.46-6.5 5.5 0 3.03 2.91 5.5 6.5 5.5.76 0 1.48-.11 2.14-.32l2.81 1.4-.7-2.65c1.33-1.07 2.25-2.46 2.25-3.93 0-3.04-2.91-5.5-6.5-5.5zm-2 3.75a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
               </svg>
-              <span>公众号配对登录 (推荐)</span>
+              <span>公众号配对登录</span>
             </button>
 
             <button
@@ -251,7 +297,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               }`}
             >
               <Mail className="w-4 h-4" />
-              <span>邮箱验证码登录 (备选)</span>
+              <span>电子邮箱登录</span>
             </button>
           </div>
         </div>
@@ -418,27 +464,55 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* Tab 2: Email Login Fallback */}
+        {/* Tab 2: Email Login */}
         {activeTab === 'email' && (
           <form onSubmit={handleEmailSubmit} className="p-5 sm:p-6 space-y-4">
             
-            <div className="flex items-center justify-between text-xs text-slate-400 pb-1">
-              <span>选择邮箱登录方式：</span>
+            {/* Quick 1-Click Fast Login Card for the user */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-r from-rose-950/50 via-slate-900 to-amber-950/40 border border-rose-500/30 flex items-center justify-between gap-3 shadow-inner">
+              <div className="flex items-center gap-2.5 truncate">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-300 font-bold text-sm shrink-0">
+                  @
+                </div>
+                <div className="truncate">
+                  <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5 truncate">
+                    <span>wuliisland@gmail.com</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-mono">当前检测账号</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 truncate">
+                    支持免密一键极速登入，立刻解锁全部核心标的与导出权限
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleFastEmailLogin('wuliisland@gmail.com')}
+                disabled={isSubmitting}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-bold text-xs shadow-md shadow-rose-950/40 transition active:scale-95 cursor-pointer shrink-0 flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4 text-rose-100" />
+                <span>一键登录</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+              <span className="font-medium text-slate-300">或输入自定义电子邮箱：</span>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setEmailMode('code')}
-                  className={`px-2 py-0.5 rounded text-[11px] transition ${
-                    emailMode === 'code' ? 'bg-rose-600/30 text-rose-300 border border-rose-500/40' : 'text-slate-400'
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                    emailMode === 'code' ? 'bg-rose-600/30 text-rose-300 border border-rose-500/40' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  验证码登录
+                  动态验证码登录
                 </button>
                 <button
                   type="button"
                   onClick={() => setEmailMode('password')}
-                  className={`px-2 py-0.5 rounded text-[11px] transition ${
-                    emailMode === 'password' ? 'bg-rose-600/30 text-rose-300 border border-rose-500/40' : 'text-slate-400'
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                    emailMode === 'password' ? 'bg-rose-600/30 text-rose-300 border border-rose-500/40' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   密码登录
@@ -449,7 +523,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {/* Email Input */}
             <div className="space-y-1">
               <label className="block text-xs font-medium text-slate-300">
-                电子邮箱账号
+                电子邮箱账号 (支持 Gmail, QQ, 163, Outlook 等任何邮箱)
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -458,7 +532,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500 transition"
                 />
               </div>
             </div>
@@ -478,14 +552,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       value={verifyCode}
                       onChange={(e) => setVerifyCode(e.target.value.trim())}
                       placeholder="输入6位数字验证码"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-bold text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-bold text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500 transition"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleSendCode}
                     disabled={codeCountdown > 0}
-                    className={`px-3 py-2 rounded-xl text-xs font-medium border transition cursor-pointer shrink-0 ${
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer shrink-0 ${
                       codeCountdown > 0 
                         ? 'bg-slate-800 text-slate-400 border-slate-700 cursor-not-allowed'
                         : 'bg-rose-600/20 text-rose-300 border-rose-500/40 hover:bg-rose-600/30'
@@ -507,7 +581,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="输入至少6位密码"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-9 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-9 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500 transition"
                   />
                   <button
                     type="button"
@@ -539,26 +613,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold text-xs shadow-md transition active:scale-95 cursor-pointer"
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold text-xs shadow-md shadow-rose-950/40 transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
             >
-              {isSubmitting ? '正在验证并登录...' : '立即登录 / 注册'}
+              <CheckCircle2 className="w-4 h-4 text-rose-200" />
+              <span>{isSubmitting ? '正在验证并登录...' : '立即验证邮箱并登录'}</span>
             </button>
 
-            {/* Quick Demo Fill Button */}
+            {/* Quick Demo Fill & Switch */}
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
               <button
                 type="button"
                 onClick={handleFillDemoEmail}
-                className="text-amber-400 hover:text-amber-300 underline underline-offset-2 transition"
+                className="text-amber-400 hover:text-amber-300 underline underline-offset-2 transition cursor-pointer"
               >
-                一键填入演示账号测试 (dividend_pro@example.com)
+                填入演示账号测试 (dividend_pro@example.com)
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('wechat')}
-                className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition cursor-pointer"
               >
-                <span>切换公众号扫码</span>
+                <span>返回公众号关注扫码</span>
                 <ArrowRight className="w-3 h-3" />
               </button>
             </div>
