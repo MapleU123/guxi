@@ -95,7 +95,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSimulatePairingSuccess = (customName?: string) => {
     setIsSubmitting(true);
     setTimeout(() => {
-      const session = simulateWeChatPairingSuccess(customName || '红利价值派·学友');
+      const session = simulateWeChatPairingSuccess(customName);
       onLoginSuccess(session);
       setIsSubmitting(false);
     }, 500);
@@ -264,7 +264,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-sm">
-                  红
+                  {pairingState.officialAccountName.slice(0, 1) || '我'}
                 </div>
                 <div>
                   <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5">

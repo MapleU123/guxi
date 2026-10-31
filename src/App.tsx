@@ -30,6 +30,7 @@ import { TargetWatchlistModal } from './components/TargetWatchlistModal';
 import { AuthModal } from './components/AuthModal';
 import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon, Target, BookmarkPlus } from 'lucide-react';
 import { exportToExcel } from './utils/exportExcel';
+import { getOfficialAccountConfig } from './utils/wechatPairingService';
 
 const CUSTOM_STOCKS_STORAGE_KEY = 'a_share_dividend_custom_stocks';
 const TARGET_WATCHLIST_STORAGE_KEY = 'a_share_dividend_target_watchlist_v1';
@@ -560,7 +561,7 @@ export default function App() {
   const handleExportTargetWatchlistForSelected = useCallback(() => {
     if (selectedStockCodes.length === 0) return;
     if (!userSession?.isLoggedIn) {
-      handleRequireLogin('🎁 导出目标买入价测算高清长图：关注公众号【红利价值派】回复配对码即可免费打包下载！');
+      handleRequireLogin(`🎁 导出目标买入价测算高清长图：关注公众号【${getOfficialAccountConfig().name}】回复配对码即可免费打包下载！`);
       return;
     }
     const selectedStocks = stocks.filter((s) => selectedStockCodes.includes(s.code));
@@ -604,7 +605,7 @@ export default function App() {
         onTriggerShock={handleTriggerShock}
         onOpenExportImage={() => {
           if (!userSession?.isLoggedIn) {
-            handleRequireLogin('🎁 导出高清无水印估值清单长图：关注公众号【红利价值派】回复配对码即可免费打包下载！');
+            handleRequireLogin(`🎁 导出高清无水印估值清单长图：关注公众号【${getOfficialAccountConfig().name}】回复配对码即可免费打包下载！`);
             return;
           }
           setCustomExportStocks(null);
@@ -810,7 +811,7 @@ export default function App() {
             <button
               onClick={() => {
                 if (!userSession?.isLoggedIn) {
-                  handleRequireLogin('🎁 导出高清无水印估值清单长图：关注公众号【红利价值派】回复配对码即可免费打包下载！');
+                  handleRequireLogin(`🎁 导出高清无水印估值清单长图：关注公众号【${getOfficialAccountConfig().name}】回复配对码即可免费打包下载！`);
                   return;
                 }
                 setCustomExportStocks(selectedPortfolioStocks);
@@ -826,7 +827,7 @@ export default function App() {
             <button
               onClick={() => {
                 if (!userSession?.isLoggedIn) {
-                  handleRequireLogin('🎁 打包下载已选高股息投资 Excel 底表：关注公众号【红利价值派】回复配对码即可免费获取！');
+                  handleRequireLogin(`🎁 打包下载已选高股息投资 Excel 底表：关注公众号【${getOfficialAccountConfig().name}】回复配对码即可免费获取！`);
                   return;
                 }
                 exportToExcel(selectedPortfolioStocks, criteria);

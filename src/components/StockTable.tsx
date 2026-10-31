@@ -989,7 +989,7 @@ export const StockTable: React.FC<StockTableProps> = ({
                           <div className="md:col-span-4 flex flex-col items-center justify-center p-4 bg-slate-950/80 rounded-xl border border-slate-800/90 text-center space-y-3">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-xs">
-                                红利
+                                {pairingState.officialAccountName.slice(0, 1) || '我'}
                               </div>
                               <div className="text-left">
                                 <div className="text-xs font-bold text-slate-100">{pairingState.officialAccountName}</div>

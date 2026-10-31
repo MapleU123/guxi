@@ -17,12 +17,13 @@ export interface PairingState {
   qrImageUrl?: string;
 }
 
-const STORAGE_KEY_NAME = 'wechat_mp_account_name_v1';
-const STORAGE_KEY_ID = 'wechat_mp_account_id_v1';
-const STORAGE_KEY_QR = 'wechat_mp_qr_image_v1';
+const STORAGE_KEY_NAME = 'wechat_mp_account_name_v2';
+const STORAGE_KEY_ID = 'wechat_mp_account_id_v2';
+const STORAGE_KEY_QR = 'wechat_mp_qr_image_v2';
 
-const DEFAULT_OFFICIAL_ACCOUNT_NAME = '红利价值派';
-const DEFAULT_OFFICIAL_ACCOUNT_ID = 'dividend_pro';
+const DEFAULT_OFFICIAL_ACCOUNT_NAME = '我爱这young';
+const DEFAULT_OFFICIAL_ACCOUNT_ID = 'gh_7d39de02f610';
+const DEFAULT_QR_IMAGE = '/assets/qrcode_gh_7d39de02f610.jpg';
 
 let currentCode = '';
 let currentExpiresAt = 0;
@@ -31,7 +32,7 @@ const listeners: Array<(state: PairingState) => void> = [];
 export function getOfficialAccountConfig(): OfficialAccountConfig {
   let name = DEFAULT_OFFICIAL_ACCOUNT_NAME;
   let wechatId = DEFAULT_OFFICIAL_ACCOUNT_ID;
-  let qrImageUrl = '';
+  let qrImageUrl = DEFAULT_QR_IMAGE;
 
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
@@ -50,7 +51,7 @@ export function getOfficialAccountConfig(): OfficialAccountConfig {
     name,
     wechatId,
     qrImageUrl,
-    description: 'A股高股息实盘研究 · 专注现金流与低估值价值投资'
+    description: '关注公众号【我爱这young】，专注高股息深度研究与价值投资'
   };
 }
 

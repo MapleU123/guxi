@@ -59,9 +59,9 @@ export const WechatQrConfigModal: React.FC<WechatQrConfigModalProps> = ({
 
   const handleSave = () => {
     const saved = saveOfficialAccountConfig({
-      name: name.trim() || '红利价值派',
-      wechatId: wechatId.trim() || 'dividend_pro',
-      qrImageUrl: qrImageUrl.trim()
+      name: name.trim() || '我爱这young',
+      wechatId: wechatId.trim() || 'gh_7d39de02f610',
+      qrImageUrl: qrImageUrl.trim() || '/assets/qrcode_gh_7d39de02f610.jpg'
     });
     setSavedSuccess(true);
     if (onSaved) onSaved(saved);
@@ -72,11 +72,11 @@ export const WechatQrConfigModal: React.FC<WechatQrConfigModalProps> = ({
   };
 
   const handleReset = () => {
-    if (confirm('确认恢复为默认演示二维码及公众号信息吗？')) {
+    if (confirm('确认恢复为官方二维码及公众号信息吗？')) {
       const def = resetOfficialAccountConfig();
       setName(def.name);
       setWechatId(def.wechatId);
-      setQrImageUrl('');
+      setQrImageUrl(def.qrImageUrl);
       setPreviewError(false);
       if (onSaved) onSaved(def);
     }
@@ -192,7 +192,7 @@ export const WechatQrConfigModal: React.FC<WechatQrConfigModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="例如：红利价值派"
+                placeholder="例如：我爱这young"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
@@ -205,7 +205,7 @@ export const WechatQrConfigModal: React.FC<WechatQrConfigModalProps> = ({
                 type="text"
                 value={wechatId}
                 onChange={(e) => setWechatId(e.target.value)}
-                placeholder="例如：dividend_pro 或 gh_xxxxxx"
+                placeholder="例如：gh_7d39de02f610"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
