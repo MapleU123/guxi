@@ -2,11 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ArrowUpDown, ArrowUp, ArrowDown, Award, TrendingUp, TrendingDown, 
   ExternalLink, ShieldCheck, Flame, Star, Info, ChevronRight, CheckCircle2,
-  Image as ImageIcon, Sparkles, Target, BarChart2, PieChart, ChevronLeft, SlidersHorizontal, Lock
+  Image as ImageIcon, Sparkles, Target, BarChart2, PieChart, ChevronLeft, SlidersHorizontal, Lock,
+  Copy, Check, Radio
 } from 'lucide-react';
-import { Stock, SortConfig, SortField } from '../types';
+import { Stock, SortConfig, SortField, UserSession } from '../types';
 import { calculateBuyOpportunityScore, getStockValuationStatus, getOrComputeStockPEPercentile } from '../utils/calculator';
 import { generateDynamicStockProfile } from '../data/allASharesDictionary';
+import { getOrGeneratePairingCode, subscribePairingState, simulateWeChatPairingSuccess, PairingState } from '../utils/wechatPairingService';
+import { WechatQrDisplay } from './WechatQrDisplay';
 
 interface StockTableProps {
   stocks: Stock[];
@@ -27,6 +30,7 @@ interface StockTableProps {
   onOpenPortfolioDrawer?: () => void;
   isLoggedIn?: boolean;
   onRequireLogin?: (prompt?: string) => void;
+  onLoginSuccess?: (session: UserSession) => void;
 }
 
 export const StockTable: React.FC<StockTableProps> = ({
@@ -47,8 +51,33 @@ export const StockTable: React.FC<StockTableProps> = ({
   onExportTargetWatchlistForSelected,
   onOpenPortfolioDrawer,
   isLoggedIn = false,
-  onRequireLogin
+  onRequireLogin,
+  onLoginSuccess
 }) => {
+  const [pairingState, setPairingState] = useState<PairingState>(() => getOrGeneratePairingCode());
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = subscribePairingState((st) => setPairingState(st));
+    return unsub;
+  }, []);
+
+  const handleCopyCode = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(pairingState.code);
+    }
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleQuickPairAndUnlock = () => {
+    if (onLoginSuccess) {
+      const session = simulateWeChatPairingSuccess('红利价值学友·微信关注用户');
+      onLoginSuccess(session);
+    } else {
+      onRequireLogin?.('微信扫码关注公众号，发送配对码即可自动解锁全部数据');
+    }
+  };
   const [hoveredScoreStock, setHoveredScoreStock] = useState<string | null>(null);
   const [tableScrollWidth, setTableScrollWidth] = useState<number>(1800);
   const [scrollProgress, setScrollProgress] = useState<number>(0);
@@ -925,51 +954,167 @@ export const StockTable: React.FC<StockTableProps> = ({
                 );
               })}
 
-              {/* Locked Rows & Login Requirement Prompt */}
+              {/* website-to-wechat 核心漏斗转化与配对卡片 (按照 littleben/website-to-wechat 规范) */}
               {hiddenCount > 0 && !isLoggedIn && (
                 <tr>
-                  <td colSpan={17} className="p-0 border-t border-slate-800 bg-slate-950/80">
-                    <div className="p-6 sm:p-8 flex flex-col items-center justify-center text-center space-y-4 border-b border-slate-800 shadow-2xl relative overflow-hidden">
-                      {/* Background light glow */}
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-32 bg-rose-600/10 blur-3xl rounded-full pointer-events-none"></div>
+                  <td colSpan={17} className="p-0 border-t border-slate-800 bg-slate-950">
+                    <div className="p-5 sm:p-8 border-b border-slate-800 shadow-2xl relative overflow-hidden">
+                      {/* Ambient background glow */}
+                      <div className="absolute top-0 right-1/4 w-96 h-48 bg-emerald-500/10 blur-3xl rounded-full pointer-events-none"></div>
+                      <div className="absolute bottom-0 left-1/4 w-96 h-48 bg-rose-500/10 blur-3xl rounded-full pointer-events-none"></div>
 
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500/20 via-amber-500/20 to-emerald-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl shadow-amber-950/40">
-                        <Lock className="w-6 h-6 animate-pulse" />
-                      </div>
-                      
-                      <div className="max-w-2xl space-y-1.5 z-10">
-                        <h4 className="text-base sm:text-lg font-bold text-slate-100 flex items-center justify-center gap-2 flex-wrap">
-                          <span>登录即可解锁查看更多高股息标的</span>
-                          <span className="text-xs bg-rose-500/20 text-rose-300 px-2.5 py-0.5 rounded-full border border-rose-500/30 font-mono font-bold">
-                            剩余 {hiddenCount} 只核心标的已锁定
-                          </span>
-                        </h4>
-                        <p className="text-xs text-slate-400 leading-relaxed max-w-xl mx-auto">
-                          当前筛选池共匹配 <strong className="text-slate-200 font-mono">{stocks.length}</strong> 只标的，未登录状态下默认展示排名前 8 只龙头标杆。
-                          登录后可立即无限制解锁全部 {stocks.length} 只标的及大A 5,652 支股票数据、5年PE历史分位估值矩阵、稳妥买入安全价推导及组合现金流测算。
-                        </p>
-                      </div>
+                      <div className="max-w-5xl mx-auto space-y-6 relative z-10">
+                        {/* Title and Funnel Hook */}
+                        <div className="text-center space-y-2">
+                          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span>微信公众号关注即登录 · 个人订阅号配对免密接入</span>
+                          </div>
+                          <h4 className="text-lg sm:text-xl font-bold text-slate-100 flex items-center justify-center gap-2 flex-wrap">
+                            <span>关注公众号【{pairingState.officialAccountName}】，回复配对码立即解锁全部标的</span>
+                            <span className="text-xs bg-rose-500/20 text-rose-300 px-2.5 py-0.5 rounded-full border border-rose-500/30 font-mono font-bold">
+                              剩余 {hiddenCount} 只核心标的待解锁
+                            </span>
+                          </h4>
+                          <p className="text-xs text-slate-400 max-w-2xl mx-auto leading-relaxed">
+                            当前筛选池共命中 <strong className="text-slate-200 font-mono">{stocks.length}</strong> 只标的（默认展示前 8 只龙头标杆）。
+                            在微信关注公众号【<strong>{pairingState.officialAccountName}</strong>】并回复当前 6 位配对码，网页即可免密瞬间同步，解锁全量大A标的、估值安全垫与高清无水印导出！
+                          </p>
+                        </div>
 
-                      {/* Action Buttons: WeChat & Email */}
-                      <div className="flex flex-wrap items-center justify-center gap-3 pt-1 z-10">
-                        <button
-                          type="button"
-                          onClick={() => onRequireLogin?.('使用微信扫码即可一键解锁查看全部标的')}
-                          className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/50 flex items-center gap-2 transition active:scale-95 cursor-pointer"
-                        >
-                          <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                            <path d="M8.5 2C4.36 2 1 4.92 1 8.5c0 1.95.96 3.7 2.5 4.94L2.8 16.5l3.24-1.62c.76.24 1.58.37 2.46.37.24 0 .47-.01.7-.03-.2-.55-.3-1.14-.3-1.75 0-3.69 3.36-6.68 7.5-6.68.21 0 .42.01.62.03C15.86 3.99 12.44 2 8.5 2zm-2.25 4.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm4.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM15.5 8.5c-3.59 0-6.5 2.46-6.5 5.5 0 3.03 2.91 5.5 6.5 5.5.76 0 1.48-.11 2.14-.32l2.81 1.4-.7-2.65c1.33-1.07 2.25-2.46 2.25-3.93 0-3.04-2.91-5.5-6.5-5.5zm-2 3.75a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
-                          </svg>
-                          <span>微信扫码快速登录解锁</span>
-                        </button>
+                        {/* Interactive 3-Column Card */}
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch bg-slate-900/90 rounded-2xl border border-slate-800 p-5 sm:p-6 shadow-xl">
+                          
+                          {/* Column 1: WeChat Official Account QR & Info (4 cols) */}
+                          <div className="md:col-span-4 flex flex-col items-center justify-center p-4 bg-slate-950/80 rounded-xl border border-slate-800/90 text-center space-y-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-xs">
+                                红利
+                              </div>
+                              <div className="text-left">
+                                <div className="text-xs font-bold text-slate-100">{pairingState.officialAccountName}</div>
+                                <div className="text-[10px] text-emerald-400 font-mono">微信号: {pairingState.officialAccountId}</div>
+                              </div>
+                            </div>
 
-                        <button
-                          type="button"
-                          onClick={() => onRequireLogin?.('使用邮箱验证码或密码即可登录解锁查看全部标的')}
-                          className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 font-bold text-xs shadow-md flex items-center gap-2 transition active:scale-95 cursor-pointer"
-                        >
-                          <span>邮箱账号登录 / 注册</span>
-                        </button>
+                            {/* QR Code Container */}
+                            <WechatQrDisplay
+                              qrImageUrl={pairingState.qrImageUrl}
+                              officialAccountName={pairingState.officialAccountName}
+                              officialAccountId={pairingState.officialAccountId}
+                              size="md"
+                              showUploadButton={true}
+                              onConfigChanged={() => {
+                                const fresh = getOrGeneratePairingCode();
+                                setPairingState(fresh);
+                              }}
+                            />
+
+                            <span className="text-[11px] text-slate-300 font-medium">
+                              微信扫一扫上方二维码关注
+                            </span>
+                          </div>
+
+                          {/* Column 2: Pairing Code & 3-Step Action (5 cols) */}
+                          <div className="md:col-span-5 flex flex-col justify-between space-y-3 p-1">
+                            <div className="space-y-2">
+                              <div className="text-xs text-slate-400 flex items-center justify-between">
+                                <span className="font-semibold text-slate-200">当前网页专属 6 位配对码</span>
+                                <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  10分钟内有效
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 bg-slate-950 border border-emerald-500/40 rounded-xl px-4 py-2 flex items-center justify-center shadow-inner">
+                                  <span className="font-mono text-2xl sm:text-3xl font-black text-emerald-400 tracking-[0.2em] select-all">
+                                    {pairingState.code}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleCopyCode}
+                                  className="px-3.5 py-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-semibold text-xs transition active:scale-95 cursor-pointer shrink-0 flex items-center gap-1"
+                                >
+                                  {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                                  <span>{copiedCode ? '已复制' : '复制配对码'}</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* 3 Step Guide */}
+                            <div className="space-y-2 text-xs text-slate-300 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                              <div className="flex items-start gap-2">
+                                <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                  1
+                                </span>
+                                <span>微信扫码关注公众号【<strong>{pairingState.officialAccountName}</strong>】</span>
+                              </div>
+                              <div className="flex items-start gap-2">
+                                <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                  2
+                                </span>
+                                <span>在公众号聊天窗口直接发送配对码：<strong className="text-emerald-400 font-mono">{pairingState.code}</strong></span>
+                              </div>
+                              <div className="flex items-start gap-2">
+                                <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                  3
+                                </span>
+                                <span>网页端自动实时配对，无需账号密码瞬间解锁</span>
+                              </div>
+                            </div>
+
+                            {/* Instant Simulation Action */}
+                            <button
+                              type="button"
+                              onClick={handleQuickPairAndUnlock}
+                              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                              <span>模拟微信发送配对码一键快速解锁</span>
+                            </button>
+                          </div>
+
+                          {/* Column 3: Lead Magnet Values Unlocked (3 cols) */}
+                          <div className="md:col-span-3 flex flex-col justify-between p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 text-xs space-y-3">
+                            <div className="space-y-2">
+                              <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                <span>关注公众号免费解锁权益</span>
+                              </div>
+                              <ul className="space-y-2 text-[11px] text-slate-400">
+                                <li className="flex items-center gap-1.5 text-slate-300">
+                                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span>全大A <strong>5,652</strong> 支股票红利全景</span>
+                                </li>
+                                <li className="flex items-center gap-1.5 text-slate-300">
+                                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span>近5年历史PE分位数估值安全垫</span>
+                                </li>
+                                <li className="flex items-center gap-1.5 text-slate-300">
+                                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span>理想股息率买点与需跌空间推算</span>
+                                </li>
+                                <li className="flex items-center gap-1.5 text-slate-300">
+                                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span>高清长图与 Excel 方案打包下载</span>
+                                </li>
+                              </ul>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-800 text-center">
+                              <button
+                                type="button"
+                                onClick={() => onRequireLogin?.('使用邮箱验证码或密码即可登录解锁查看全部标的')}
+                                className="text-[11px] text-slate-400 hover:text-slate-200 underline underline-offset-2 transition cursor-pointer"
+                              >
+                                备选方式：使用邮箱登录
+                              </button>
+                            </div>
+                          </div>
+
+                        </div>
                       </div>
                     </div>
                   </td>

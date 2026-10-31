@@ -559,6 +559,10 @@ export default function App() {
   // 导出已选标的的理想目标买入价测算
   const handleExportTargetWatchlistForSelected = useCallback(() => {
     if (selectedStockCodes.length === 0) return;
+    if (!userSession?.isLoggedIn) {
+      handleRequireLogin('🎁 导出目标买入价测算高清长图：关注公众号【红利价值派】回复配对码即可免费打包下载！');
+      return;
+    }
     const selectedStocks = stocks.filter((s) => selectedStockCodes.includes(s.code));
     const calculated: TargetDividendCalculatedStock[] = selectedStocks.map((stock) => {
       // 优先读取自选池设定的理想股息率，否则根据当前股息率给一个有吸引力的进取目标值 (如现股息率+1.0%或至少5.5%)
@@ -570,7 +574,7 @@ export default function App() {
     });
     setTargetExportItems(calculated);
     setIsTargetExportModalOpen(true);
-  }, [selectedStockCodes, stocks, watchItems]);
+  }, [selectedStockCodes, stocks, watchItems, userSession, handleRequireLogin]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-500 selection:text-white pb-20">
@@ -599,6 +603,10 @@ export default function App() {
         onOpenAlerts={() => setIsAlertHistoryOpen(true)}
         onTriggerShock={handleTriggerShock}
         onOpenExportImage={() => {
+          if (!userSession?.isLoggedIn) {
+            handleRequireLogin('🎁 导出高清无水印估值清单长图：关注公众号【红利价值派】回复配对码即可免费打包下载！');
+            return;
+          }
           setCustomExportStocks(null);
           setIsExportImageModalOpen(true);
         }}
@@ -713,6 +721,7 @@ export default function App() {
               }}
               isLoggedIn={Boolean(userSession?.isLoggedIn)}
               onRequireLogin={handleRequireLogin}
+              onLoginSuccess={handleLoginSuccess}
             />
           </div>
 
@@ -770,7 +779,7 @@ export default function App() {
             {/* 一键将选中的标的加入我的自选备选池 */}
             <button
               onClick={() => handleBatchAddTargetWatchlist(selectedPortfolioStocks)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-semibold text-xs shadow-md transition active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-semibold text-xs shadow-md transition active:scale-95 cursor-pointer"
               title="将勾选的标的一键加入【我的自选备选池】并进入目标价测算"
             >
               <BookmarkPlus className="w-3.5 h-3.5 text-amber-400" />
@@ -780,7 +789,7 @@ export default function App() {
             {/* 核心：选中目标之后，导出理想目标买入价测算图 */}
             <button
               onClick={handleExportTargetWatchlistForSelected}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-emerald-500/20 hover:from-amber-500/30 hover:via-rose-500/30 hover:to-emerald-500/30 text-amber-300 border border-amber-500/50 font-semibold text-xs shadow-md transition active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-emerald-500/20 hover:from-amber-500/30 hover:via-rose-500/30 hover:to-emerald-500/30 text-amber-300 border border-amber-500/50 font-semibold text-xs shadow-md transition active:scale-95 cursor-pointer"
               title="导出已勾选标的的理想目标买入价、每股分红、需跌空间及测算公式高清图"
             >
               <Target className="w-3.5 h-3.5 text-amber-400" />
@@ -792,7 +801,7 @@ export default function App() {
                 setIsRightSidebarOpen(true);
                 setRightSidebarMode('drawer');
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-semibold text-xs shadow-md transition active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-semibold text-xs shadow-md transition active:scale-95 cursor-pointer"
             >
               <PieChart className="w-3.5 h-3.5" />
               <span>测算组合现金流</span>
@@ -800,10 +809,14 @@ export default function App() {
 
             <button
               onClick={() => {
+                if (!userSession?.isLoggedIn) {
+                  handleRequireLogin('🎁 导出高清无水印估值清单长图：关注公众号【红利价值派】回复配对码即可免费打包下载！');
+                  return;
+                }
                 setCustomExportStocks(selectedPortfolioStocks);
                 setIsExportImageModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-medium text-xs transition active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-medium text-xs transition active:scale-95 cursor-pointer"
               title="将已勾选标的高清导出为综合估值图片清单"
             >
               <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
@@ -811,8 +824,14 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => exportToExcel(selectedPortfolioStocks, criteria)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs transition active:scale-95"
+              onClick={() => {
+                if (!userSession?.isLoggedIn) {
+                  handleRequireLogin('🎁 打包下载已选高股息投资 Excel 底表：关注公众号【红利价值派】回复配对码即可免费获取！');
+                  return;
+                }
+                exportToExcel(selectedPortfolioStocks, criteria);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs transition active:scale-95 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-emerald-400" />
               <span>导出已选 ({selectedStockCodes.length})</span>

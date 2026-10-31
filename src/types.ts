@@ -324,5 +324,5 @@ export interface UserSession {
   email?: string;
   wechatNickname?: string;
   loginAt: string;
-  role: 'VIP会员' | '实名认证用户';
+  role: 'VIP会员' | '实名认证用户' | 'VIP会员 (公众号已关注)' | 'VIP会员 (邮箱认证)' | string;
 }

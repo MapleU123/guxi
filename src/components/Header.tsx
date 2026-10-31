@@ -77,6 +77,28 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
+      {/* website-to-wechat Top Conversion Announcement Bar */}
+      {!userSession?.isLoggedIn && (
+        <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 border-b border-emerald-500/30 px-4 py-1.5 text-xs text-slate-300">
+          <div className="max-w-[1920px] mx-auto w-full flex items-center justify-between gap-3 text-[11px]">
+            <div className="flex items-center gap-2 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+              <span className="text-emerald-300 font-semibold shrink-0">关注公众号即登录：</span>
+              <span className="text-slate-300 truncate">
+                微信关注【<strong>红利价值派</strong>】回复网页配对码，免密解锁 5,652 只大A标的全景透析与高清底表导出
+              </span>
+            </div>
+            <button
+              onClick={onOpenAuthModal}
+              className="text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2 shrink-0 flex items-center gap-1 transition cursor-pointer"
+            >
+              <span>获取配对码</span>
+              <span>&rarr;</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between py-3 gap-3">
           
@@ -303,8 +325,14 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Excel Export Button */}
             <button
-              onClick={() => exportToExcel(filteredStocks, criteria)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition active:scale-95"
+              onClick={() => {
+                if (!userSession?.isLoggedIn) {
+                  onOpenAuthModal?.();
+                  return;
+                }
+                exportToExcel(filteredStocks, criteria);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition active:scale-95 cursor-pointer"
               title="导出当前筛选结果为 Excel (.xlsx) 表格"
             >
               <Download className="w-3.5 h-3.5 text-emerald-400" />
@@ -365,13 +393,15 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <button
                 onClick={onOpenAuthModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-md shadow-emerald-950/40 border border-emerald-400/40 transition active:scale-95 group"
-                title="登录后解锁全市场 5,652 只股票、全部综合估值及高清导出功能（支持微信扫码与邮箱快速登录）"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-md shadow-emerald-950/40 border border-emerald-400/40 transition active:scale-95 group cursor-pointer"
+                title="关注微信公众号【红利价值派】回复配对码，免密解锁全站 5,652 支股票数据与高清底表导出"
               >
-                <LogIn className="w-3.5 h-3.5 text-emerald-200 group-hover:scale-110 transition-transform" />
-                <span>登录 / 注册</span>
-                <span className="text-[10px] bg-black/30 px-1 py-0.2 rounded text-emerald-200 font-normal">
-                  微信·邮箱
+                <svg className="w-3.5 h-3.5 fill-current text-emerald-100 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+                  <path d="M8.5 2C4.36 2 1 4.92 1 8.5c0 1.95.96 3.7 2.5 4.94L2.8 16.5l3.24-1.62c.76.24 1.58.37 2.46.37.24 0 .47-.01.7-.03-.2-.55-.3-1.14-.3-1.75 0-3.69 3.36-6.68 7.5-6.68.21 0 .42.01.62.03C15.86 3.99 12.44 2 8.5 2zm-2.25 4.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm4.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM15.5 8.5c-3.59 0-6.5 2.46-6.5 5.5 0 3.03 2.91 5.5 6.5 5.5.76 0 1.48-.11 2.14-.32l2.81 1.4-.7-2.65c1.33-1.07 2.25-2.46 2.25-3.93 0-3.04-2.91-5.5-6.5-5.5zm-2 3.75a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm4 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                </svg>
+                <span>公众号关注登录</span>
+                <span className="text-[10px] bg-black/35 px-1 py-0.2 rounded text-emerald-200 font-mono font-medium">
+                  配对码
                 </span>
               </button>
             )}
