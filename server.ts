@@ -1,9 +1,16 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+// 微信公众号登录（website-to-wechat）：vendored 算法模块（内部 @ts-nocheck）
+import { createWebhookHandler } from './wechat/webhook.ts'; // @ts-ignore
+import { issueLoginCode, consumeLoginCode, createLoginPair, claimLoginPair, pairLogin } from './wechat/pairing.ts'; // @ts-ignore
+import { siteSubject } from './wechat/wechat-crypto.ts'; // @ts-ignore
+// @ts-ignore - replies is JSON, bundled by esbuild
+import replies from './wechat/replies.zh-CN.json';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
 app.use(express.json());
 
@@ -261,6 +268,97 @@ app.get('/api/search', async (req, res) => {
 // 4. 健康检查 API
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
+// ===== 微信公众号登录（website-to-wechat）：webhook + 配对 + 验证 =====
+// 注意：配对状态为内存存储，必须单实例部署（Cloud Run max-instances=1）。
+const SITE_URL = process.env.APP_URL || process.env.SITE_URL || 'https://a-studio-1816.ai.studio';
+const WECHAT_WEBHOOK_ENABLED = process.env.WECHAT_MP_WEBHOOK_ENABLED !== 'false';
+const WECHAT_LOGIN_ENABLED = process.env.WECHAT_MP_LOGIN_ENABLED === 'true';
+
+const wechatConfig = {
+  appId: process.env.WECHAT_MP_APP_ID || '',
+  originalId: process.env.WECHAT_MP_ORIGINAL_ID || 'gh_7d39de02f610',
+  token: process.env.WECHAT_MP_TOKEN || '',
+  aesKey: process.env.WECHAT_MP_AES_KEY || '',
+  codeSecret: process.env.WECHAT_MP_CODE_SECRET || '',
+  namespace: '',
+};
+wechatConfig.namespace = `${wechatConfig.appId}:a-studio`;
+
+const ONE_TAP_PATH = '/?wechat_login'; // SPA：前端用 query 参数接管一键登录
+
+const webhook = createWebhookHandler({
+  config: wechatConfig as any,
+  replies: replies as any,
+  loginKeywords: ['股息'],
+  async onLoginKeyword(message: any) {
+    if (!WECHAT_LOGIN_ENABLED) return '登录功能即将开放，敬请期待～';
+    const code = issueLoginCode(wechatConfig, message);
+    if (!code) return '请求太频繁，请 5 分钟后再试。';
+    return `登录验证码：${code}（5 分钟有效）\n\n在微信里浏览网站？直接点：${SITE_URL}${ONE_TAP_PATH}=${code}`;
+  },
+  async onPairCode(message: any, code: string) {
+    return pairLogin(wechatConfig, code, message)
+      ? '已登录，回到网页即可。'
+      : '登录码无效或已过期，请在网页上获取新的登录码。';
+  },
+  routes: [{
+    test: (t: string) => t === '下载' || t === 'download',
+    reply: async () => process.env.DOWNLOAD_REPLY || `${SITE_URL}/download`,
+  }],
+});
+
+// 把 WHATWG Request/Response 适配到 Express
+async function handleWebRequest(webHandler: (r: any) => Promise<any>, req: any, res: any) {
+  const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+  const init: any = { method: req.method, headers: req.headers as any };
+  if (req.method !== 'GET' && req.method !== 'HEAD') init.body = req.body ?? '';
+  try {
+    const webRes = await webHandler(new Request(url, init));
+    const buf = Buffer.from(await webRes.arrayBuffer());
+    webRes.headers.forEach((v: string, k: string) => res.setHeader(k, v));
+    res.status(webRes.status).send(buf);
+  } catch {
+    res.status(500).send('error');
+  }
+}
+
+app.all('/api/wechat/webhook', express.text({ type: () => true }), (req, res) => {
+  if (!WECHAT_WEBHOOK_ENABLED) return res.status(404).send('not found');
+  return handleWebRequest(webhook, req, res);
+});
+
+app.post('/api/wechat/pair', express.json(), async (req, res) => {
+  const { action, browserKey } = (req.body || {}) as any;
+  if (!WECHAT_LOGIN_ENABLED) return res.status(403).json({ ok: false, reason: 'login_disabled' });
+  if (action === 'create') {
+    const pair = createLoginPair(wechatConfig, browserKey);
+    if (!pair) return res.status(429).json({ ok: false, reason: 'rate_limited' });
+    return res
+      .cookie('wx_pair', pair.request, { maxAge: pair.expiresIn * 1000, path: '/api/wechat/pair', httpOnly: true, secure: true, sameSite: 'lax' })
+      .set('Cache-Control', 'no-store')
+      .json({ ok: true, code: pair.code, expiresIn: pair.expiresIn });
+  }
+  if (action === 'claim') {
+    const secret = (req.headers.cookie || '').match(/(?:^|; )wx_pair=([^;]+)/)?.[1];
+    const result = claimLoginPair(wechatConfig, secret);
+    if (result.status !== 'paired') return res.set('Cache-Control', 'no-store').json({ ok: true, ...result });
+    const subject = siteSubject(wechatConfig.codeSecret, wechatConfig.namespace, (result as any).openid);
+    res.cookie('wechat_session', subject, { httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
+    return res.set('Cache-Control', 'no-store').json({ ok: true, status: 'paired', openid: (result as any).openid });
+  }
+  return res.status(400).json({ ok: false });
+});
+
+app.post('/api/wechat/verify', express.json(), async (req, res) => {
+  const { code, browserKey } = (req.body || {}) as any;
+  if (!WECHAT_LOGIN_ENABLED) return res.status(403).json({ ok: false, reason: 'login_disabled' });
+  const openid = consumeLoginCode(wechatConfig, code, browserKey);
+  if (!openid) return res.status(400).json({ ok: false, reason: 'invalid_or_expired' });
+  const subject = siteSubject(wechatConfig.codeSecret, wechatConfig.namespace, openid);
+  res.cookie('wechat_session', subject, { httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
+  return res.json({ ok: true, status: 'paired', openid });
 });
 
 // Vite middleware configuration for Full-Stack

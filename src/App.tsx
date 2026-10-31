@@ -30,7 +30,7 @@ import { TargetWatchlistModal } from './components/TargetWatchlistModal';
 import { AuthModal } from './components/AuthModal';
 import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon, Target, BookmarkPlus } from 'lucide-react';
 import { exportToExcel } from './utils/exportExcel';
-import { getOfficialAccountConfig } from './utils/wechatPairingService';
+import { getOfficialAccountConfig, verifyOneTapLogin } from './utils/wechatPairingService';
 
 const CUSTOM_STOCKS_STORAGE_KEY = 'a_share_dividend_custom_stocks';
 const TARGET_WATCHLIST_STORAGE_KEY = 'a_share_dividend_target_watchlist_v1';
@@ -172,6 +172,21 @@ export default function App() {
     }
     setIsAuthModalOpen(false);
   }, []);
+
+  // 微信内一键链接登录：用户从公众号消息点开 /?wechat_login=CODE 时自动核销并登录
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('wechat_login');
+    if (code && /^\d{6}$/.test(code)) {
+      verifyOneTapLogin(code).then((session) => {
+        if (session) handleLoginSuccess(session);
+        // 核销为一次性，清理 URL 避免刷新重复核销
+        const url = new URL(window.location.href);
+        url.searchParams.delete('wechat_login');
+        window.history.replaceState({}, '', url.pathname + url.search);
+      });
+    }
+  }, [handleLoginSuccess]);
 
   const handleLogout = useCallback(() => {
     setUserSession(null);

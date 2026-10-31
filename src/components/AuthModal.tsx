@@ -6,10 +6,10 @@ import {
 } from 'lucide-react';
 import { UserSession } from '../types';
 import { 
-  getOrGeneratePairingCode, 
-  refreshPairingCode, 
-  subscribePairingState, 
-  simulateWeChatPairingSuccess,
+  getCurrentPairingState,
+  subscribePairingState,
+  simulateLogin,
+  beginPairing,
   PairingState 
 } from '../utils/wechatPairingService';
 import { WechatQrDisplay } from './WechatQrDisplay';
@@ -30,7 +30,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialTab = 'wechat'
 }) => {
   const [activeTab, setActiveTab] = useState<'wechat' | 'email'>(initialTab);
-  const [pairingState, setPairingState] = useState<PairingState>(() => getOrGeneratePairingCode());
+  const [pairingState, setPairingState] = useState<PairingState>(() => getCurrentPairingState());
   const [copied, setCopied] = useState<boolean>(false);
   const [isPairingListening, setIsPairingListening] = useState<boolean>(true);
   const [pairingCountdown, setPairingCountdown] = useState<number>(600); // 10 minutes
@@ -53,32 +53,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   }, [isOpen, initialTab]);
 
-  // Subscribe to pairing code updates
+  // Subscribe to pairing code updates (real backend-backed)
   useEffect(() => {
     if (!isOpen) return;
-    const unsubscribe = subscribePairingState((st) => {
-      setPairingState(st);
-      const remainingSeconds = Math.max(0, Math.floor((st.expiresAt - Date.now()) / 1000));
-      setPairingCountdown(remainingSeconds);
-    });
+    const unsubscribe = subscribePairingState(
+      (st) => {
+        setPairingState(st);
+        const remainingSeconds = Math.max(0, Math.floor((st.expiresAt - Date.now()) / 1000));
+        setPairingCountdown(remainingSeconds);
+      },
+      (session) => {
+        onLoginSuccess(session);
+        onClose();
+      }
+    );
     return unsubscribe;
   }, [isOpen]);
 
-  // Countdown timer for pairing code
+  // Countdown timer for pairing code (派生自服务端 expiresAt；过期由服务自动续期)
   useEffect(() => {
     if (!isOpen || activeTab !== 'wechat') return;
     const timer = setInterval(() => {
-      setPairingCountdown((prev) => {
-        if (prev <= 1) {
-          const fresh = refreshPairingCode();
-          setPairingState(fresh);
-          return 600;
-        }
-        return prev - 1;
-      });
+      setPairingCountdown(Math.max(0, Math.floor((pairingState.expiresAt - Date.now()) / 1000)));
     }, 1000);
     return () => clearInterval(timer);
-  }, [isOpen, activeTab]);
+  }, [isOpen, activeTab, pairingState.expiresAt]);
 
   // Code countdown for email
   useEffect(() => {
@@ -100,12 +99,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // WeChat official account pairing simulation / direct login
-  const handleSimulatePairingSuccess = (customName?: string) => {
+  // 演示/预览用：未接入真实公众号时也能解锁查看已登录界面（不是真实登录）
+  const handleSimulateLogin = (customName?: string) => {
     setIsSubmitting(true);
     setTimeout(() => {
-      const session = simulateWeChatPairingSuccess(customName);
+      const session = simulateLogin(customName);
       onLoginSuccess(session);
+      onClose();
       setIsSubmitting(false);
     }, 500);
   };
@@ -305,6 +305,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Tab 1: WeChat Official Account "website-to-wechat" Pairing Content */}
         {activeTab === 'wechat' && (
           <div className="p-5 sm:p-6 space-y-4">
+            {pairingState.status === 'error' && (
+              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{pairingState.error || '登录服务暂时不可用，请稍后再试或使用邮箱登录。'}</span>
+              </div>
+            )}
             
             {/* Top Official Account Info Card */}
             <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
@@ -340,10 +346,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   officialAccountId={pairingState.officialAccountId}
                   size="md"
                   showUploadButton={true}
-                  onConfigChanged={() => {
-                    const fresh = getOrGeneratePairingCode();
-                    setPairingState(fresh);
-                  }}
+                      onConfigChanged={() => {
+                        setPairingState(getCurrentPairingState());
+                      }}
                 />
 
                 <div className="mt-2 text-[11px] text-slate-300 font-medium">
@@ -416,15 +421,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
                       <span>正在实时监听公众号后台配对消息...</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const fresh = refreshPairingCode();
-                        setPairingState(fresh);
-                      }}
-                      className="text-slate-400 hover:text-slate-200 inline-flex items-center gap-1 transition"
-                      title="刷新生成新的配对码"
-                    >
+                      <button
+                        type="button"
+                        onClick={() => beginPairing()}
+                        className="text-slate-400 hover:text-slate-200 inline-flex items-center gap-1 transition"
+                        title="刷新生成新的配对码"
+                      >
                       <RefreshCw className="w-3 h-3" />
                       <span>刷新</span>
                     </button>
@@ -433,12 +435,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   {/* One-click simulate verification (Essential for preview environment & instant testing) */}
                   <button
                     type="button"
-                    onClick={() => handleSimulatePairingSuccess('红利价值学友·张工')}
+                    onClick={() => handleSimulateLogin('红利价值学友·张工')}
                     disabled={isSubmitting}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-md shadow-emerald-950/50 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-slate-700/60 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-600 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
                   >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                    <span>{isSubmitting ? '配对验证成功，正在进入...' : '模拟公众号发送配对码一键极速体验'}</span>
+                    <CheckCircle2 className="w-4 h-4 text-slate-300" />
+                    <span>{isSubmitting ? '演示解锁中...' : '演示解锁 · 预览已登录界面'}</span>
                   </button>
                 </div>
 

@@ -8,7 +8,7 @@ import {
 import { Stock, SortConfig, SortField, UserSession } from '../types';
 import { calculateBuyOpportunityScore, getStockValuationStatus, getOrComputeStockPEPercentile } from '../utils/calculator';
 import { generateDynamicStockProfile } from '../data/allASharesDictionary';
-import { getOrGeneratePairingCode, subscribePairingState, simulateWeChatPairingSuccess, PairingState } from '../utils/wechatPairingService';
+import { getCurrentPairingState, subscribePairingState, simulateLogin, PairingState } from '../utils/wechatPairingService';
 import { WechatQrDisplay } from './WechatQrDisplay';
 
 interface StockTableProps {
@@ -54,13 +54,21 @@ export const StockTable: React.FC<StockTableProps> = ({
   onRequireLogin,
   onLoginSuccess
 }) => {
-  const [pairingState, setPairingState] = useState<PairingState>(() => getOrGeneratePairingCode());
+  const [pairingState, setPairingState] = useState<PairingState>(() => getCurrentPairingState());
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
   useEffect(() => {
-    const unsub = subscribePairingState((st) => setPairingState(st));
+    // 仅在未登录（漏斗卡片可见）时开启配对轮询，已登录后停止，避免无谓请求
+    if (isLoggedIn) return;
+    const unsub = subscribePairingState(
+      (st) => setPairingState(st),
+      (session) => {
+        if (onLoginSuccess) onLoginSuccess(session);
+        else onRequireLogin?.('微信扫码关注公众号，发送配对码即可自动解锁全部数据', 'wechat');
+      }
+    );
     return unsub;
-  }, []);
+  }, [isLoggedIn, onLoginSuccess, onRequireLogin]);
 
   const handleCopyCode = () => {
     if (navigator.clipboard) {
@@ -72,10 +80,10 @@ export const StockTable: React.FC<StockTableProps> = ({
 
   const handleQuickPairAndUnlock = () => {
     if (onLoginSuccess) {
-      const session = simulateWeChatPairingSuccess('红利价值学友·微信关注用户');
+      const session = simulateLogin('红利价值学友·微信关注用户');
       onLoginSuccess(session);
     } else {
-      onRequireLogin?.('微信扫码关注公众号，发送配对码即可自动解锁全部数据');
+      onRequireLogin?.('微信扫码关注公众号，发送配对码即可自动解锁全部数据', 'wechat');
     }
   };
   const [hoveredScoreStock, setHoveredScoreStock] = useState<string | null>(null);
@@ -1005,8 +1013,7 @@ export const StockTable: React.FC<StockTableProps> = ({
                               size="md"
                               showUploadButton={true}
                               onConfigChanged={() => {
-                                const fresh = getOrGeneratePairingCode();
-                                setPairingState(fresh);
+                                setPairingState(getCurrentPairingState());
                               }}
                             />
 
@@ -1072,7 +1079,7 @@ export const StockTable: React.FC<StockTableProps> = ({
                               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
                             >
                               <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                              <span>模拟微信发送配对码一键快速解锁</span>
+                              <span>演示解锁 · 预览已登录界面</span>
                             </button>
                           </div>
 
