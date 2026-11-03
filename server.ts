@@ -291,7 +291,7 @@ const ONE_TAP_PATH = '/?wechat_login'; // SPA：前端用 query 参数接管一�
 const webhook = createWebhookHandler({
   config: wechatConfig as any,
   replies: replies as any,
-  loginKeywords: ['股息'],
+  loginKeywords: ['登录'],
   async onLoginKeyword(message: any) {
     if (!WECHAT_LOGIN_ENABLED) return '登录功能即将开放，敬请期待～';
     const code = issueLoginCode(wechatConfig, message);
