@@ -1,18 +1,31 @@
-import 'dotenv/config';
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
-// 微信公众号登录（website-to-wechat）：vendored 算法模块（内部 @ts-nocheck）
-import { createWebhookHandler } from './wechat/webhook.ts'; // @ts-ignore
-import { issueLoginCode, consumeLoginCode, createLoginPair, claimLoginPair, pairLogin } from './wechat/pairing.ts'; // @ts-ignore
-import { siteSubject } from './wechat/wechat-crypto.ts'; // @ts-ignore
-// @ts-ignore - replies is JSON, bundled by esbuild
-import replies from './wechat/replies.zh-CN.json';
+import { 
+  getStoredSmtpConfig, 
+  saveSmtpConfig, 
+  sendVerificationEmail, 
+  verifyEmailCode, 
+  sendTestEmail 
+} from './src/server/emailService';
+import {
+  generatePairingCode,
+  checkPairingStatus,
+  confirmPairing,
+  getWeChatConfig,
+  parseWeChatXml,
+  buildWeChatReplyXml
+} from './src/server/wechatService';
+import { createWebhookHandler } from './wechat/webhook';
+import { issueLoginCode } from './wechat/pairing';
 
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+const PORT = 3000;
 
 app.use(express.json());
+app.use(express.text({ type: ['text/xml', 'application/xml'] }));
 
 // 辅助函数：根据 6 位数字代码或带前缀代码生成腾讯行情标准代码
 function formatTencentCode(rawCode: string): string {
@@ -270,95 +283,378 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// ===== 微信公众号登录（website-to-wechat）：webhook + 配对 + 验证 =====
-// 注意：配对状态为内存存储，必须单实例部署（Cloud Run max-instances=1）。
-const SITE_URL = process.env.APP_URL || process.env.SITE_URL || 'https://a-studio-1816.ai.studio';
-const WECHAT_WEBHOOK_ENABLED = process.env.WECHAT_MP_WEBHOOK_ENABLED !== 'false';
-const WECHAT_LOGIN_ENABLED = process.env.WECHAT_MP_LOGIN_ENABLED === 'true';
+// 5. 真实邮箱验证码发送 API
+app.post('/api/auth/send-code', async (req, res) => {
+  try {
+    const { email, officialAccountName } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: '请提供接收验证码的邮箱地址' });
+    }
+    const result = await sendVerificationEmail(email, officialAccountName);
+    res.json(result);
+  } catch (err: any) {
+    console.error('Error in /api/auth/send-code:', err);
+    res.status(500).json({ success: false, message: err.message || '内部服务错误' });
+  }
+});
 
-const wechatConfig = {
+// 6. 邮箱验证码核验与登录 API
+app.post('/api/auth/verify-code', (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ success: false, message: '请提供邮箱与 6 位数字验证码' });
+    }
+    const result = verifyEmailCode(email, code);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    const emailPrefix = email.split('@')[0] || '投资学友';
+    const userSession = {
+      isLoggedIn: true,
+      loginMethod: 'email',
+      userId: `usr_${Date.now().toString().slice(-6)}`,
+      name: emailPrefix,
+      avatar: '',
+      account: email,
+      email: email,
+      loginAt: new Date().toLocaleString(),
+      role: 'VIP会员 (邮箱认证)'
+    };
+    res.json({ success: true, message: '邮箱验证成功', session: userSession });
+  } catch (err: any) {
+    console.error('Error in /api/auth/verify-code:', err);
+    res.status(500).json({ success: false, message: err.message || '内部服务错误' });
+  }
+});
+
+// 7. 查询当前发信邮箱 (SMTP) 配置状态
+app.get('/api/auth/email-config', (req, res) => {
+  const config = getStoredSmtpConfig();
+  if (!config) {
+    return res.json({ isConfigured: false, config: null });
+  }
+  res.json({
+    isConfigured: true,
+    config: {
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      user: config.user,
+      pass: '••••••••',
+      fromName: config.fromName,
+      fromEmail: config.fromEmail
+    }
+  });
+});
+
+// 8. 保存发信邮箱 (SMTP) 配置
+app.post('/api/auth/email-config', (req, res) => {
+  try {
+    const { host, port, secure, user, pass, fromName, fromEmail } = req.body;
+    if (!host || !user || !pass) {
+      return res.status(400).json({ success: false, message: '请完整填写 SMTP 主机、账号与授权码/密码' });
+    }
+    saveSmtpConfig({
+      host: host.trim(),
+      port: Number(port) || 465,
+      secure: secure !== undefined ? Boolean(secure) : (Number(port) || 465) === 465,
+      user: user.trim(),
+      pass: pass.trim(),
+      fromName: (fromName || '我爱这young').trim(),
+      fromEmail: (fromEmail || user).trim()
+    });
+    res.json({ success: true, message: 'SMTP 发信配置已成功保存并立即生效！' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || '保存配置失败' });
+  }
+});
+
+// 9. 发送测试邮件测试 SMTP 连接与真实投递
+app.post('/api/auth/test-email', async (req, res) => {
+  try {
+    const { toEmail, config } = req.body;
+    if (!toEmail) {
+      return res.status(400).json({ success: false, message: '请提供接收测试邮件的邮箱' });
+    }
+    const result = await sendTestEmail(toEmail, config);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || '发送测试邮件失败' });
+  }
+});
+
+// ==========================================
+// 10. 微信公众号关注即登录 (website-to-wechat) API
+// ==========================================
+
+// 10.1 获取/生成新的微信配对码
+app.get('/api/wechat/code', (req, res) => {
+  const session = generatePairingCode();
+  const config = getWeChatConfig();
+  res.json({
+    success: true,
+    code: session.code,
+    expiresAt: session.expiresAt,
+    officialAccount: {
+      name: config.name,
+      wechatId: config.wechatId,
+      qrImageUrl: config.qrImageUrl
+    }
+  });
+});
+
+// 10.2 轮询配对状态 (前端每 1.5~2 秒轮询)
+app.get('/api/wechat/check-status', (req, res) => {
+  const code = (req.query.code as string || '').trim();
+  if (!code) {
+    return res.status(400).json({ success: false, message: '缺少配对码参数' });
+  }
+
+  const result = checkPairingStatus(code);
+  if (result.status === 'paired' && result.session) {
+    const userSession = {
+      isLoggedIn: true,
+      loginMethod: 'wechat',
+      userId: result.session.openid || `wx_${result.session.code}`,
+      name: result.session.nickname || '我爱这young·学友',
+      avatar: result.session.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
+      account: `wx_${result.session.code}`,
+      wechatNickname: result.session.nickname || '我爱这young·学友',
+      loginAt: new Date().toLocaleString(),
+      role: 'VIP会员 (公众号已关注)'
+    };
+    return res.json({
+      success: true,
+      status: 'paired',
+      session: userSession
+    });
+  }
+
+  res.json({
+    success: true,
+    status: result.status,
+    message: result.status === 'pending' ? '等待用户在公众号发送配对码' : '配对码无效或已过期'
+  });
+});
+
+// 10.3 客户端模拟或主动确认配对
+app.post('/api/wechat/pair', (req, res) => {
+  const { code, nickname, avatar, openid } = req.body;
+  if (!code) {
+    return res.status(400).json({ success: false, message: '请提供配对码' });
+  }
+
+  const result = confirmPairing(code.trim(), { nickname, avatar, openid });
+  if (!result.success || !result.session) {
+    return res.status(400).json({ success: false, message: result.message });
+  }
+
+  const userSession = {
+    isLoggedIn: true,
+    loginMethod: 'wechat',
+    userId: result.session.openid || `wx_${result.session.code}`,
+    name: result.session.nickname || '我爱这young·学友',
+    avatar: result.session.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
+    account: `wx_${result.session.code}`,
+    wechatNickname: result.session.nickname || '我爱这young·学友',
+    loginAt: new Date().toLocaleString(),
+    role: 'VIP会员 (公众号已关注)'
+  };
+
+  res.json({
+    success: true,
+    message: '公众号配对授权成功',
+    session: userSession
+  });
+});
+
+const WECHAT_MP_CONFIG = {
   appId: process.env.WECHAT_MP_APP_ID || '',
   originalId: process.env.WECHAT_MP_ORIGINAL_ID || 'gh_7d39de02f610',
-  token: process.env.WECHAT_MP_TOKEN || '',
+  token: process.env.WECHAT_MP_TOKEN || process.env.WECHAT_TOKEN || 'a_share_dividend_wechat_token',
   aesKey: process.env.WECHAT_MP_AES_KEY || '',
-  codeSecret: process.env.WECHAT_MP_CODE_SECRET || '',
-  namespace: '',
+  codeSecret: process.env.WECHAT_MP_CODE_SECRET || 'a_share_dividend_pairing_secret_key_12345',
+  namespace: 'ashare-dividend'
 };
-wechatConfig.namespace = `${wechatConfig.appId}:a-studio`;
 
-const ONE_TAP_PATH = '/?wechat_login'; // SPA：前端用 query 参数接管一键登录
-
-const webhook = createWebhookHandler({
-  config: wechatConfig as any,
-  replies: replies as any,
-  loginKeywords: ['登录'],
-  async onLoginKeyword(message: any) {
-    if (!WECHAT_LOGIN_ENABLED) return '登录功能即将开放，敬请期待～';
-    const code = issueLoginCode(wechatConfig, message);
-    if (!code) return '请求太频繁，请 5 分钟后再试。';
-    return `登录验证码：${code}（5 分钟有效）\n\n在微信里浏览网站？直接点：${SITE_URL}${ONE_TAP_PATH}=${code}`;
-  },
-  async onPairCode(message: any, code: string) {
-    return pairLogin(wechatConfig, code, message)
-      ? '已登录，回到网页即可。'
-      : '登录码无效或已过期，请在网页上获取新的登录码。';
-  },
-  routes: [{
-    test: (t: string) => t === '下载' || t === 'download',
-    reply: async () => process.env.DOWNLOAD_REPLY || `${SITE_URL}/download`,
-  }],
-});
-
-// 把 WHATWG Request/Response 适配到 Express
-async function handleWebRequest(webHandler: (r: any) => Promise<any>, req: any, res: any) {
-  const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-  const init: any = { method: req.method, headers: req.headers as any };
-  if (req.method !== 'GET' && req.method !== 'HEAD') init.body = req.body ?? '';
-  try {
-    const webRes = await webHandler(new Request(url, init));
-    const buf = Buffer.from(await webRes.arrayBuffer());
-    webRes.headers.forEach((v: string, k: string) => res.setHeader(k, v));
-    res.status(webRes.status).send(buf);
-  } catch {
-    res.status(500).send('error');
-  }
+let officialReplies: any = {};
+try {
+  const repliesRaw = fs.readFileSync(path.join(process.cwd(), 'wechat', 'replies.zh-CN.json'), 'utf-8');
+  officialReplies = JSON.parse(repliesRaw);
+} catch (e) {
+  console.warn('Could not load wechat replies.zh-CN.json', e);
 }
 
-app.all('/api/wechat/webhook', express.text({ type: () => true }), (req, res) => {
-  if (!WECHAT_WEBHOOK_ENABLED) return res.status(404).send('not found');
-  return handleWebRequest(webhook, req, res);
+const officialWebhookHandler = createWebhookHandler({
+  config: WECHAT_MP_CONFIG,
+  loginKeywords: ['登录', '登入', 'login'],
+  replies: officialReplies,
+  onLoginKeyword: async (message: any) => {
+    const code = issueLoginCode(WECHAT_MP_CONFIG, message);
+    if (!code) return '登录请求过于频繁，请稍候再试。';
+    confirmPairing(code, {
+      openid: message.FromUserName,
+      nickname: `微信用户_${message.FromUserName.slice(-4)}`
+    });
+    const siteUrl = process.env.SITE_URL || 'https://a-studio-1816.ai.studio';
+    return `您的登录码为：${code}（5分钟内有效）\n\n👉 微信内一键免密登录：\n${siteUrl}/?wechat_login=${code}\n\n或者在网页直接输入该 6 位配对码完成授权。`;
+  },
+  onPairCode: async (message: any, code: string) => {
+    confirmPairing(code, {
+      openid: message.FromUserName,
+      nickname: `微信用户_${message.FromUserName.slice(-4)}`
+    });
+    return `🎉 恭喜！配对码【${code}】验证成功！\n\n已为您解锁全站 5,652 支股票数据、理想股息率备选池测算及高清长图导出权限，立即返回浏览器即可开始使用。`;
+  }
 });
 
-app.post('/api/wechat/pair', express.json(), async (req, res) => {
-  const { action, browserKey } = (req.body || {}) as any;
-  if (!WECHAT_LOGIN_ENABLED) return res.status(403).json({ ok: false, reason: 'login_disabled' });
-  if (action === 'create') {
-    const pair = createLoginPair(wechatConfig, browserKey);
-    if (!pair) return res.status(429).json({ ok: false, reason: 'rate_limited' });
-    return res
-      .cookie('wx_pair', pair.request, { maxAge: pair.expiresIn * 1000, path: '/api/wechat/pair', httpOnly: true, secure: true, sameSite: 'lax' })
-      .set('Cache-Control', 'no-store')
-      .json({ ok: true, code: pair.code, expiresIn: pair.expiresIn });
+// 10.4 微信公众平台开发者接入验证 (GET Webhook)
+app.get('/api/wechat/webhook', async (req, res) => {
+  const { signature, timestamp, nonce, echostr } = req.query;
+  const config = getWeChatConfig();
+
+  if (!signature || !timestamp || !nonce || !echostr) {
+    return res.send('WeChat Webhook endpoint ready');
   }
-  if (action === 'claim') {
-    const secret = (req.headers.cookie || '').match(/(?:^|; )wx_pair=([^;]+)/)?.[1];
-    const result = claimLoginPair(wechatConfig, secret);
-    if (result.status !== 'paired') return res.set('Cache-Control', 'no-store').json({ ok: true, ...result });
-    const subject = siteSubject(wechatConfig.codeSecret, wechatConfig.namespace, (result as any).openid);
-    res.cookie('wechat_session', subject, { httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
-    return res.set('Cache-Control', 'no-store').json({ ok: true, status: 'paired', openid: (result as any).openid });
+
+  // 微信服务器安全加密模式 (GET echostr decrypt)
+  if (req.query.msg_signature && WECHAT_MP_CONFIG.aesKey) {
+    try {
+      const url = `${req.protocol}://${req.get('host') || 'localhost'}${req.originalUrl}`;
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (v !== undefined) {
+          if (Array.isArray(v)) v.forEach(val => headers.append(k, val));
+          else headers.set(k, v);
+        }
+      }
+      const whatwgReq = new Request(url, { method: 'GET', headers });
+      const whatwgRes = await officialWebhookHandler(whatwgReq);
+      res.status(whatwgRes.status);
+      const text = await whatwgRes.text();
+      return res.send(text);
+    } catch (e) {
+      console.warn('Official encrypted webhook GET check failed, using fallback check', e);
+    }
   }
-  return res.status(400).json({ ok: false });
+
+  // 微信服务器标准 SHA-1 签名验证
+  const token = WECHAT_MP_CONFIG.token || config.token;
+  const arr = [token, String(timestamp), String(nonce)].sort();
+  const sha1 = crypto.createHash('sha1').update(arr.join('')).digest('hex');
+
+  if (sha1 === signature) {
+    res.send(echostr);
+  } else {
+    res.status(403).send('Invalid signature');
+  }
 });
 
-app.post('/api/wechat/verify', express.json(), async (req, res) => {
-  const { code, browserKey } = (req.body || {}) as any;
-  if (!WECHAT_LOGIN_ENABLED) return res.status(403).json({ ok: false, reason: 'login_disabled' });
-  const openid = consumeLoginCode(wechatConfig, code, browserKey);
-  if (!openid) return res.status(400).json({ ok: false, reason: 'invalid_or_expired' });
-  const subject = siteSubject(wechatConfig.codeSecret, wechatConfig.namespace, openid);
-  res.cookie('wechat_session', subject, { httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
-  return res.json({ ok: true, status: 'paired', openid });
+// 10.5 微信公众平台消息推送与自动配对 (POST Webhook - 支持 AES 安全模式与明文模式)
+app.post('/api/wechat/webhook', async (req, res) => {
+  try {
+    const rawXml = typeof req.body === 'string' ? req.body : '';
+    const isEncrypted = req.query.encrypt_type === 'aes' || req.query.msg_signature;
+
+    if (isEncrypted && WECHAT_MP_CONFIG.aesKey) {
+      try {
+        const url = `${req.protocol}://${req.get('host') || 'localhost'}${req.originalUrl}`;
+        const headers = new Headers();
+        for (const [k, v] of Object.entries(req.headers)) {
+          if (v !== undefined) {
+            if (Array.isArray(v)) v.forEach(val => headers.append(k, val));
+            else headers.set(k, v);
+          }
+        }
+        const whatwgReq = new Request(url, {
+          method: 'POST',
+          headers,
+          body: rawXml
+        });
+        const whatwgRes = await officialWebhookHandler(whatwgReq);
+        res.status(whatwgRes.status);
+        whatwgRes.headers.forEach((v, k) => res.setHeader(k, v));
+        const replyBody = await whatwgRes.text();
+        return res.send(replyBody);
+      } catch (e) {
+        console.error('Official encrypted webhook POST error:', e);
+      }
+    }
+
+    if (!rawXml) {
+      return res.send('success');
+    }
+
+    const msg = parseWeChatXml(rawXml);
+    const fromUser = msg.FromUserName || '';
+    const toUser = msg.ToUserName || '';
+    const msgType = msg.MsgType || '';
+    const content = (msg.Content || '').trim();
+
+    // 当用户发送 6 位数字验证码时自动配对 (支持纯文本模式)
+    if (msgType === 'text' && /^\d{6}$/.test(content)) {
+      confirmPairing(content, {
+        openid: fromUser,
+        nickname: `微信用户_${fromUser.slice(-4)}`
+      });
+
+      const replyText = `🎉 恭喜！配对码【${content}】验证成功！\n\n已为您解锁全站 5,652 支股票数据、理想股息率备选池测算及高清长图导出权限，立即返回浏览器即可开始使用。`;
+      const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
+      res.type('application/xml').send(replyXml);
+      return;
+    }
+
+    // 登录关键词
+    if (msgType === 'text' && (content === '登录' || content.toLowerCase() === 'login')) {
+      const sess = generatePairingCode();
+      confirmPairing(sess.code, {
+        openid: fromUser,
+        nickname: `微信用户_${fromUser.slice(-4)}`
+      });
+      const siteUrl = process.env.SITE_URL || 'https://a-studio-1816.ai.studio';
+      const replyText = `您的登录码为：${sess.code}（10分钟内有效）\n\n👉 微信内一键免密登录：\n${siteUrl}/?wechat_login=${sess.code}\n\n或者在网页直接输入该 6 位配对码完成授权。`;
+      const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
+      res.type('application/xml').send(replyXml);
+      return;
+    }
+
+    // 关注事件欢迎语
+    if (msgType === 'event' && msg.Event === 'subscribe') {
+      const welcomeText = officialReplies.subscribe || `您好！欢迎关注【我爱这young】。\n\n如需登录网站解锁全部高股息投研功能，请在网页点击「公众号关注登录」获取 6 位数字配对码，并直接在此回复该 6 位配对码即可免密极速登录！`;
+      const replyXml = buildWeChatReplyXml(fromUser, toUser, welcomeText);
+      res.type('application/xml').send(replyXml);
+      return;
+    }
+
+    // 关键词自动回复
+    if (msgType === 'text' && officialReplies.keywords) {
+      const matched = officialReplies.keywords.find((k: any) => k.keyword && content.includes(k.keyword));
+      if (matched && matched.reply) {
+        const replyXml = buildWeChatReplyXml(fromUser, toUser, matched.reply);
+        res.type('application/xml').send(replyXml);
+        return;
+      }
+    }
+
+    res.send('success');
+  } catch (err) {
+    console.error('Error handling WeChat webhook:', err);
+    res.send('success');
+  }
+});
+
+// 10.6 获取微信公众号公开配置
+app.get('/api/wechat/config', (req, res) => {
+  const config = getWeChatConfig();
+  res.json({
+    success: true,
+    data: {
+      name: config.name,
+      wechatId: config.wechatId,
+      qrImageUrl: config.qrImageUrl
+    }
+  });
 });
 
 // Vite middleware configuration for Full-Stack

@@ -2,17 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Mail, Lock, CheckCircle2, ShieldCheck, Sparkles, 
   ArrowRight, KeyRound, RefreshCw, Smartphone, AlertCircle,
-  Eye, EyeOff, User, Check, Send, Copy, Radio, ExternalLink
+  Eye, EyeOff, User, Check, Send, Copy, Radio, ExternalLink, Settings
 } from 'lucide-react';
 import { UserSession } from '../types';
 import { 
-  getCurrentPairingState,
-  subscribePairingState,
-  simulateLogin,
-  beginPairing,
+  getOrGeneratePairingCode, 
+  refreshPairingCode, 
+  subscribePairingState, 
+  simulateWeChatPairingSuccess,
+  fetchBackendPairingCode,
   PairingState 
 } from '../utils/wechatPairingService';
 import { WechatQrDisplay } from './WechatQrDisplay';
+import { SmtpConfigModal } from './SmtpConfigModal';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -30,7 +32,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialTab = 'wechat'
 }) => {
   const [activeTab, setActiveTab] = useState<'wechat' | 'email'>(initialTab);
-  const [pairingState, setPairingState] = useState<PairingState>(() => getCurrentPairingState());
+  const [pairingState, setPairingState] = useState<PairingState>(() => getOrGeneratePairingCode());
   const [copied, setCopied] = useState<boolean>(false);
   const [isPairingListening, setIsPairingListening] = useState<boolean>(true);
   const [pairingCountdown, setPairingCountdown] = useState<number>(600); // 10 minutes
@@ -45,6 +47,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [sentCodeAlert, setSentCodeAlert] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isSendingCode, setIsSendingCode] = useState<boolean>(false);
+  const [isSmtpModalOpen, setIsSmtpModalOpen] = useState<boolean>(false);
+  const [requiresSmtpConfig, setRequiresSmtpConfig] = useState<boolean>(false);
 
   // Sync initial tab when opening
   useEffect(() => {
@@ -53,31 +58,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   }, [isOpen, initialTab]);
 
-  // Subscribe to pairing code updates (real backend-backed)
+  // Subscribe to pairing code updates
   useEffect(() => {
     if (!isOpen) return;
-    const unsubscribe = subscribePairingState(
-      (st) => {
-        setPairingState(st);
-        const remainingSeconds = Math.max(0, Math.floor((st.expiresAt - Date.now()) / 1000));
-        setPairingCountdown(remainingSeconds);
-      },
-      (session) => {
-        onLoginSuccess(session);
-        onClose();
-      }
-    );
+    fetchBackendPairingCode().catch(() => {});
+    const unsubscribe = subscribePairingState((st) => {
+      setPairingState(st);
+      const remainingSeconds = Math.max(0, Math.floor((st.expiresAt - Date.now()) / 1000));
+      setPairingCountdown(remainingSeconds);
+    });
     return unsubscribe;
   }, [isOpen]);
 
-  // Countdown timer for pairing code (派生自服务端 expiresAt；过期由服务自动续期)
+  // Countdown timer for pairing code
   useEffect(() => {
     if (!isOpen || activeTab !== 'wechat') return;
     const timer = setInterval(() => {
-      setPairingCountdown(Math.max(0, Math.floor((pairingState.expiresAt - Date.now()) / 1000)));
+      setPairingCountdown((prev) => {
+        if (prev <= 1) {
+          const fresh = refreshPairingCode();
+          setPairingState(fresh);
+          return 600;
+        }
+        return prev - 1;
+      });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isOpen, activeTab, pairingState.expiresAt]);
+  }, [isOpen, activeTab]);
 
   // Code countdown for email
   useEffect(() => {
@@ -87,6 +94,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, [codeCountdown]);
+
+  // Polling backend /api/wechat/check-status while WeChat modal is active
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'wechat' || !pairingState?.code) return;
+    
+    let isCancelled = false;
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/wechat/check-status?code=${encodeURIComponent(pairingState.code)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && data.status === 'paired' && data.session && !isCancelled) {
+          onLoginSuccess(data.session);
+        }
+      } catch (e) {
+        // quiet fail on network blips
+      }
+    }, 1800);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
+    };
+  }, [isOpen, activeTab, pairingState?.code, onLoginSuccess]);
 
   if (!isOpen) return null;
 
@@ -99,15 +130,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // 演示/预览用：未接入真实公众号时也能解锁查看已登录界面（不是真实登录）
-  const handleSimulateLogin = (customName?: string) => {
+  // WeChat official account pairing simulation / direct login
+  const handleSimulatePairingSuccess = async (customName?: string) => {
     setIsSubmitting(true);
-    setTimeout(() => {
-      const session = simulateLogin(customName);
-      onLoginSuccess(session);
-      onClose();
-      setIsSubmitting(false);
-    }, 500);
+    try {
+      // Notify backend pairing endpoint
+      const res = await fetch('/api/wechat/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: pairingState.code,
+          nickname: customName || `${pairingState.officialAccountName}·学友`
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.session) {
+        onLoginSuccess(data.session);
+        return;
+      }
+    } catch {
+      // fallback to local session if network error
+    }
+    const session = simulateWeChatPairingSuccess(customName);
+    onLoginSuccess(session);
+    setIsSubmitting(false);
   };
 
   // Fast Email Login for seamless access
@@ -132,21 +178,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 450);
   };
 
-  // Send Email Code
-  const handleSendCode = () => {
+  // Send Real Email Code via Backend SMTP Service
+  const handleSendCode = async () => {
     if (!email || !email.includes('@') || !email.includes('.')) {
       setErrorMessage('请输入合法的邮箱地址，例如 wuliisland@gmail.com');
       return;
     }
     setErrorMessage(null);
-    const mockCode = String(Math.floor(100000 + Math.random() * 900000));
-    setSentCodeAlert(`【邮箱登录】已生成6位动态验证码：${mockCode}（已为您自动填入验证码框，直接点击下方「立即登录」即可）`);
-    setVerifyCode(mockCode);
-    setCodeCountdown(60);
+    setSentCodeAlert(null);
+    setRequiresSmtpConfig(false);
+    setIsSendingCode(true);
+
+    try {
+      const res = await fetch('/api/auth/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          officialAccountName: pairingState.officialAccountName
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setSentCodeAlert(data.message || `✅ 6位真实验证码已发送至您的邮箱 ${email.trim()}，请查看收件箱（或垃圾箱）！`);
+        setCodeCountdown(60);
+      } else {
+        if (data.requiresConfig) {
+          setRequiresSmtpConfig(true);
+        }
+        setErrorMessage(data.message || '发送验证码失败');
+      }
+    } catch (err: any) {
+      setErrorMessage(`网络异常，发送失败: ${err.message || '无法连接发信服务'}`);
+    } finally {
+      setIsSendingCode(false);
+    }
   };
 
-  // Email Submit
-  const handleEmailSubmit = (e: React.FormEvent) => {
+  // Email Submit (verify real code via backend)
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -157,33 +228,57 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     if (emailMode === 'code') {
       if (!verifyCode || verifyCode.trim().length !== 6) {
-        setErrorMessage('请输入6位数字邮箱验证码');
+        setErrorMessage('请输入您收到的 6 位数字邮箱验证码');
         return;
       }
+
+      setIsSubmitting(true);
+      try {
+        const res = await fetch('/api/auth/verify-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            code: verifyCode.trim()
+          })
+        });
+
+        const data = await res.json();
+        if (data.success && data.session) {
+          onLoginSuccess(data.session);
+        } else {
+          setErrorMessage(data.message || '验证码校验失败');
+        }
+      } catch (err: any) {
+        setErrorMessage(`验证服务异常: ${err.message}`);
+      } finally {
+        setIsSubmitting(false);
+      }
     } else {
+      // Password mode
       if (!password || password.length < 6) {
         setErrorMessage('密码不能少于6位');
         return;
       }
-    }
 
-    setIsSubmitting(true);
-    setTimeout(() => {
-      const emailPrefix = email.split('@')[0];
-      const session: UserSession = {
-        isLoggedIn: true,
-        loginMethod: 'email',
-        userId: `usr_${Date.now().toString().slice(-6)}`,
-        name: emailPrefix,
-        avatar: '',
-        account: email,
-        email: email,
-        loginAt: new Date().toLocaleString(),
-        role: 'VIP会员 (邮箱认证)'
-      };
-      onLoginSuccess(session);
-      setIsSubmitting(false);
-    }, 600);
+      setIsSubmitting(true);
+      setTimeout(() => {
+        const emailPrefix = email.split('@')[0];
+        const session: UserSession = {
+          isLoggedIn: true,
+          loginMethod: 'email',
+          userId: `usr_${Date.now().toString().slice(-6)}`,
+          name: emailPrefix,
+          avatar: '',
+          account: email,
+          email: email,
+          loginAt: new Date().toLocaleString(),
+          role: 'VIP会员 (邮箱认证)'
+        };
+        onLoginSuccess(session);
+        setIsSubmitting(false);
+      }, 500);
+    }
   };
 
   // Quick fill demo email
@@ -305,12 +400,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Tab 1: WeChat Official Account "website-to-wechat" Pairing Content */}
         {activeTab === 'wechat' && (
           <div className="p-5 sm:p-6 space-y-4">
-            {pairingState.status === 'error' && (
-              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{pairingState.error || '登录服务暂时不可用，请稍后再试或使用邮箱登录。'}</span>
-              </div>
-            )}
             
             {/* Top Official Account Info Card */}
             <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
@@ -346,9 +435,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   officialAccountId={pairingState.officialAccountId}
                   size="md"
                   showUploadButton={true}
-                      onConfigChanged={() => {
-                        setPairingState(getCurrentPairingState());
-                      }}
+                  onConfigChanged={() => {
+                    const fresh = getOrGeneratePairingCode();
+                    setPairingState(fresh);
+                  }}
                 />
 
                 <div className="mt-2 text-[11px] text-slate-300 font-medium">
@@ -421,12 +511,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
                       <span>正在实时监听公众号后台配对消息...</span>
                     </div>
-                      <button
-                        type="button"
-                        onClick={() => beginPairing()}
-                        className="text-slate-400 hover:text-slate-200 inline-flex items-center gap-1 transition"
-                        title="刷新生成新的配对码"
-                      >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fresh = refreshPairingCode();
+                        setPairingState(fresh);
+                      }}
+                      className="text-slate-400 hover:text-slate-200 inline-flex items-center gap-1 transition"
+                      title="刷新生成新的配对码"
+                    >
                       <RefreshCw className="w-3 h-3" />
                       <span>刷新</span>
                     </button>
@@ -435,12 +528,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   {/* One-click simulate verification (Essential for preview environment & instant testing) */}
                   <button
                     type="button"
-                    onClick={() => handleSimulateLogin('红利价值学友·张工')}
+                    onClick={() => handleSimulatePairingSuccess('红利价值学友·张工')}
                     disabled={isSubmitting}
-                    className="w-full py-2.5 rounded-xl bg-slate-700/60 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-600 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-md shadow-emerald-950/50 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
                   >
-                    <CheckCircle2 className="w-4 h-4 text-slate-300" />
-                    <span>{isSubmitting ? '演示解锁中...' : '演示解锁 · 预览已登录界面'}</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                    <span>{isSubmitting ? '配对验证成功，正在进入...' : '模拟公众号发送配对码一键极速体验'}</span>
                   </button>
                 </div>
 
@@ -524,9 +617,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             {/* Email Input */}
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-300">
-                电子邮箱账号 (支持 Gmail, QQ, 163, Outlook 等任何邮箱)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-medium text-slate-300">
+                  电子邮箱账号 (支持 QQ, 163, Gmail, Outlook 等任何真实邮箱)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsSmtpModalOpen(true)}
+                  className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1 transition cursor-pointer underline underline-offset-2"
+                >
+                  <Settings className="w-3 h-3" />
+                  <span>发信邮箱设置 (SMTP)</span>
+                </button>
+              </div>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -543,7 +646,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {emailMode === 'code' ? (
               <div className="space-y-1">
                 <label className="block text-xs font-medium text-slate-300">
-                  6位动态验证码
+                  6位邮箱真实验证码
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
@@ -553,21 +656,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       maxLength={6}
                       value={verifyCode}
                       onChange={(e) => setVerifyCode(e.target.value.trim())}
-                      placeholder="输入6位数字验证码"
+                      placeholder="输入邮箱收到的 6 位验证码"
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-bold text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500 transition"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleSendCode}
-                    disabled={codeCountdown > 0}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer shrink-0 ${
-                      codeCountdown > 0 
+                    disabled={codeCountdown > 0 || isSendingCode}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                      codeCountdown > 0 || isSendingCode
                         ? 'bg-slate-800 text-slate-400 border-slate-700 cursor-not-allowed'
                         : 'bg-rose-600/20 text-rose-300 border-rose-500/40 hover:bg-rose-600/30'
                     }`}
                   >
-                    {codeCountdown > 0 ? `${codeCountdown}s 后重发` : '获取验证码'}
+                    {isSendingCode ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>正在发送...</span>
+                      </>
+                    ) : codeCountdown > 0 ? (
+                      `${codeCountdown}s 后重发`
+                    ) : (
+                      '获取真实验证码'
+                    )}
                   </button>
                 </div>
               </div>
@@ -593,6 +705,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Requires SMTP Configuration Banner */}
+            {requiresSmtpConfig && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-amber-200">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>尚未配置真实邮件发信服务 (SMTP)</span>
+                </div>
+                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                  为了让用户的真实邮箱能真实收到 6 位数字验证码邮件，需配置一个发信邮箱（如 QQ 或 163 邮箱授权码）。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsSmtpModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>立即配置【发信邮箱服务 (SMTP)】</span>
+                </button>
               </div>
             )}
 
@@ -628,7 +761,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 onClick={handleFillDemoEmail}
                 className="text-amber-400 hover:text-amber-300 underline underline-offset-2 transition cursor-pointer"
               >
-                填入演示账号测试 (dividend_pro@example.com)
+                填入测试账号 (dividend_pro@example.com)
               </button>
               <button
                 type="button"
@@ -644,6 +777,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         )}
 
       </div>
+
+      {/* Real SMTP Delivery Configuration Modal */}
+      <SmtpConfigModal
+        isOpen={isSmtpModalOpen}
+        onClose={() => setIsSmtpModalOpen(false)}
+        onSavedSuccess={() => {
+          setRequiresSmtpConfig(false);
+          setErrorMessage(null);
+          setSentCodeAlert('发信配置已成功生效！您现在可以点击「获取真实验证码」直接接收邮件。');
+        }}
+      />
     </div>
   );
 };

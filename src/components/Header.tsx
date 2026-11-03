@@ -1,4 +1,4 @@
-import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart, LogIn, LogOut, User as UserIcon, Mail } from 'lucide-react';
+import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart, LogIn, LogOut, User as UserIcon, Mail, Settings } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
 import { getTradingStatus } from '../utils/realtimeQuoteService';
@@ -43,6 +43,7 @@ interface HeaderProps {
   userSession?: UserSession | null;
   onOpenAuthModal?: (tab?: 'wechat' | 'email') => void;
   onLogout?: () => void;
+  onOpenSmtpConfig?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -72,7 +73,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleRightSidebar,
   userSession = null,
   onOpenAuthModal,
-  onLogout
+  onLogout,
+  onOpenSmtpConfig
 }) => {
   const tradingInfo = getTradingStatus();
   const mpConfig = getOfficialAccountConfig();
@@ -392,18 +394,39 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   </div>
                 </div>
-                {onLogout && (
-                  <button
-                    onClick={onLogout}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
-                    title="退出当前登录"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <div className="flex items-center gap-1">
+                  {onOpenSmtpConfig && (
+                    <button
+                      onClick={onOpenSmtpConfig}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                      title="配置发信邮箱服务 (SMTP)"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {onLogout && (
+                    <button
+                      onClick={onLogout}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
+                      title="退出当前登录"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-2">
+                {onOpenSmtpConfig && (
+                  <button
+                    onClick={onOpenSmtpConfig}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer border border-slate-700/60"
+                    title="发信邮箱设置 (SMTP服务与测试发信到 wuliisland@gmail.com)"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
                 <button
                   onClick={() => onOpenAuthModal?.('email')}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 hover:border-rose-500/50 transition active:scale-95 group cursor-pointer shadow-sm"

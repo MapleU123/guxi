@@ -28,6 +28,7 @@ import { CustomStockImportModal } from './components/CustomStockImportModal';
 import { MarketUniverseModal } from './components/MarketUniverseModal';
 import { TargetWatchlistModal } from './components/TargetWatchlistModal';
 import { AuthModal } from './components/AuthModal';
+import { SmtpConfigModal } from './components/SmtpConfigModal';
 import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon, Target, BookmarkPlus } from 'lucide-react';
 import { exportToExcel } from './utils/exportExcel';
 import { getOfficialAccountConfig, verifyOneTapLogin } from './utils/wechatPairingService';
@@ -162,6 +163,7 @@ export default function App() {
   const [userSession, setUserSession] = useState<UserSession | null>(() => loadStoredUserSession());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalPrompt, setAuthModalPrompt] = useState<string | undefined>(undefined);
+  const [isSmtpConfigModalOpen, setIsSmtpConfigModalOpen] = useState<boolean>(false);
 
   const handleLoginSuccess = useCallback((session: UserSession) => {
     setUserSession(session);
@@ -656,6 +658,7 @@ export default function App() {
         userSession={userSession}
         onOpenAuthModal={handleOpenAuthModal}
         onLogout={handleLogout}
+        onOpenSmtpConfig={() => setIsSmtpConfigModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -1024,6 +1027,12 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
         initialPrompt={authModalPrompt}
         initialTab={authModalTab}
+      />
+
+      {/* 真实邮箱发信 SMTP 配置与测试弹窗 */}
+      <SmtpConfigModal
+        isOpen={isSmtpConfigModalOpen}
+        onClose={() => setIsSmtpConfigModalOpen(false)}
       />
 
     </div>
