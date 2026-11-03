@@ -69,14 +69,7 @@ export const DividendAlertHistoryModal: React.FC<DividendAlertHistoryModalProps>
               <Zap className="w-3.5 h-3.5" />
               监控触发逻辑与判定公式：
             </span>
-            <button
-              onClick={onTriggerShock}
-              className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white shadow-sm transition active:scale-95 flex items-center gap-1"
-              title="模拟1-2只股票盘中产生±10%振幅，触发实时预警气泡"
-            >
-              <Zap className="w-3 h-3" />
-              <span>模拟盘中大波动测试</span>
-            </button>
+            <span className="text-[11px] text-slate-400">实时自动监控</span>
           </div>
           <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 leading-relaxed">
             <div><strong>股息率相对变动率：</strong> ΔYield% = ((当前盘中股息率 - 昨收基准股息率) ÷ 昨收基准股息率) × 100%</div>
@@ -97,7 +90,7 @@ export const DividendAlertHistoryModal: React.FC<DividendAlertHistoryModalProps>
               <div className="space-y-1">
                 <p className="text-sm font-medium text-slate-300">当前各标的盘中股息率运行平稳</p>
                 <p className="text-xs text-slate-500 max-w-md">
-                  暂未检测到盘中股息率波动超过 ±10% 的异动事件。点击上方【模拟盘中大波动测试】可快速验证异动预警悬浮气泡。
+                  暂未检测到盘中股息率波动超过 ±10% 的异动事件，系统将持续根据实盘行情监控各标的即期收益率变动。
                 </p>
               </div>
             </div>

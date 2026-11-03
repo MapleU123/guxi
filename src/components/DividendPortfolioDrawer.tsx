@@ -333,7 +333,7 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
             </button>
           ) : (
             <div className="text-[11px] text-slate-500">
-              提示：可勾选标的模拟配置
+              提示：可勾选标的进行组合配置
             </div>
           )}
           <button
@@ -367,7 +367,7 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                高股息投资组合模拟器
+                高股息投资组合测算
                 <span className="text-xs bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded border border-rose-500/30 font-mono">
                   已选 {stockCount} 只
                 </span>
@@ -412,7 +412,7 @@ export const DividendPortfolioDrawer: React.FC<DividendPortfolioDrawerProps> = (
             </button>
           ) : (
             <div className="text-xs text-slate-500">
-              提示：可勾选多只股票进行模拟测算
+              提示：可勾选多只股票进行组合测算
             </div>
           )}
           <button

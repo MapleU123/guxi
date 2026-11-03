@@ -222,16 +222,6 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Quick Shock Simulation Button */}
-            <button
-              onClick={onTriggerShock}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 hover:border-amber-500/30 transition active:scale-95"
-              title="模拟盘中剧烈大波动（使股息率发生±10%异动跳变）并弹出悬浮预警气泡"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">模拟±10%异动</span>
-            </button>
-
             {/* Auto-Refresh Select */}
             <div className="flex items-center bg-slate-800 rounded-lg border border-slate-700/80 p-0.5 text-xs">
               <span className="text-slate-400 px-2 flex items-center gap-1 text-[11px]">
@@ -285,7 +275,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* 组合模拟测算 (右侧栏) Toggle Button */}
+            {/* 组合测算 (右侧栏) Toggle Button */}
             {onToggleRightSidebar ? (
               <button
                 onClick={onToggleRightSidebar}
@@ -294,7 +284,7 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white border-rose-400 shadow-rose-950/50 ring-2 ring-rose-500/30'
                     : 'bg-slate-800 hover:bg-slate-700 text-rose-300 border-rose-500/30'
                 }`}
-                title={isRightSidebarOpen ? "右侧栏当前已常驻显示，点击可收起" : "右侧栏已收起，点击显示高股息组合模拟器与现金流测算"}
+                title={isRightSidebarOpen ? "右侧栏当前已常驻显示，点击可收起" : "右侧栏已收起，点击显示高股息组合现金流与持仓测算"}
               >
                 <PieChart className="w-3.5 h-3.5 text-rose-200 group-hover:rotate-45 transition duration-300" />
                 <span>{isRightSidebarOpen ? '收起右侧栏' : '显示右侧栏'}</span>
@@ -310,10 +300,10 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={onOpenPortfolioDrawer}
                 className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-rose-600/20 to-amber-600/20 hover:from-rose-600/30 hover:to-amber-600/30 text-rose-300 border border-rose-500/40 shadow-sm transition active:scale-95 group"
-                title="打开右侧栏：高股息组合现金流与配置模拟器"
+                title="打开右侧栏：高股息组合现金流与持仓测算"
               >
                 <PieChart className="w-3.5 h-3.5 text-rose-400 group-hover:rotate-45 transition duration-300" />
-                <span>组合模拟器</span>
+                <span>组合测算</span>
                 {portfolioCount > 0 && (
                   <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-mono text-[10px] font-bold">
                     {portfolioCount}

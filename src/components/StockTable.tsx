@@ -8,7 +8,7 @@ import {
 import { Stock, SortConfig, SortField, UserSession } from '../types';
 import { calculateBuyOpportunityScore, getStockValuationStatus, getOrComputeStockPEPercentile } from '../utils/calculator';
 import { generateDynamicStockProfile } from '../data/allASharesDictionary';
-import { getCurrentPairingState, subscribePairingState, simulateLogin, PairingState } from '../utils/wechatPairingService';
+import { getCurrentPairingState, subscribePairingState, PairingState } from '../utils/wechatPairingService';
 import { WechatQrDisplay } from './WechatQrDisplay';
 
 interface StockTableProps {
@@ -78,13 +78,8 @@ export const StockTable: React.FC<StockTableProps> = ({
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const handleQuickPairAndUnlock = () => {
-    if (onLoginSuccess) {
-      const session = simulateLogin('红利价值学友·微信关注用户');
-      onLoginSuccess(session);
-    } else {
-      onRequireLogin?.('微信扫码关注公众号，发送配对码即可自动解锁全部数据', 'wechat');
-    }
+  const handleOpenAuthModal = () => {
+    onRequireLogin?.('微信扫码关注公众号，发送配对码即可自动解锁全部数据', 'wechat');
   };
   const [hoveredScoreStock, setHoveredScoreStock] = useState<string | null>(null);
   const [tableScrollWidth, setTableScrollWidth] = useState<number>(1800);
@@ -242,10 +237,10 @@ export const StockTable: React.FC<StockTableProps> = ({
             <button
               onClick={onOpenPortfolioDrawer}
               className="px-2.5 py-1 rounded text-xs font-semibold bg-gradient-to-r from-rose-600/20 to-amber-600/20 hover:from-rose-600/30 hover:to-amber-600/30 text-rose-300 border border-rose-500/40 transition flex items-center gap-1 active:scale-95"
-              title="打开右侧栏：高股息组合模拟器与现金流测算"
+              title="打开右侧栏：高股息组合现金流与持仓测算"
             >
               <PieChart className="w-3.5 h-3.5 text-rose-400" />
-              <span>组合模拟器 ({selectedStockCodes.length})</span>
+              <span>组合测算 ({selectedStockCodes.length})</span>
             </button>
           )}
 
@@ -1072,14 +1067,14 @@ export const StockTable: React.FC<StockTableProps> = ({
                               </div>
                             </div>
 
-                            {/* Instant Simulation Action */}
+                            {/* Auth Action */}
                             <button
                               type="button"
-                              onClick={handleQuickPairAndUnlock}
+                              onClick={handleOpenAuthModal}
                               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
                             >
                               <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                              <span>演示解锁 · 预览已登录界面</span>
+                              <span>关注公众号 · 发送配对码解锁</span>
                             </button>
                           </div>
 

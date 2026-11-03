@@ -950,7 +950,7 @@ export default function App() {
             setRightSidebarMode('drawer');
           }}
           className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-gradient-to-l from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white pl-3 pr-2 py-3.5 rounded-l-2xl shadow-2xl flex flex-col items-center gap-1.5 transition-all duration-200 hover:scale-105 group border-y border-l border-white/30 ring-4 ring-rose-500/25 active:scale-95 cursor-pointer backdrop-blur-md"
-          title="点击展开右侧栏：高股息投资组合模拟器与现金流测算"
+          title="点击展开右侧栏：高股息投资组合现金流与持仓测算"
         >
           <PieChart className="w-4 h-4 text-white group-hover:rotate-45 transition-transform duration-300 drop-shadow" />
           <div className="flex flex-col items-center text-[11px] font-bold leading-tight py-0.5 text-white drop-shadow select-none tracking-widest">

@@ -9,7 +9,6 @@ import {
   getOrGeneratePairingCode, 
   refreshPairingCode, 
   subscribePairingState, 
-  simulateWeChatPairingSuccess,
   fetchBackendPairingCode,
   PairingState 
 } from '../utils/wechatPairingService';
@@ -130,54 +129,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // WeChat official account pairing simulation / direct login
-  const handleSimulatePairingSuccess = async (customName?: string) => {
-    setIsSubmitting(true);
-    try {
-      // Notify backend pairing endpoint
-      const res = await fetch('/api/wechat/pair', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: pairingState.code,
-          nickname: customName || `${pairingState.officialAccountName}·学友`
-        })
-      });
-      const data = await res.json();
-      if (data.success && data.session) {
-        onLoginSuccess(data.session);
-        return;
-      }
-    } catch {
-      // fallback to local session if network error
-    }
-    const session = simulateWeChatPairingSuccess(customName);
-    onLoginSuccess(session);
-    setIsSubmitting(false);
-  };
-
-  // Fast Email Login for seamless access
-  const handleFastEmailLogin = (targetEmail: string) => {
-    setIsSubmitting(true);
-    setErrorMessage(null);
-    setTimeout(() => {
-      const emailPrefix = targetEmail.split('@')[0] || '投资学友';
-      const session: UserSession = {
-        isLoggedIn: true,
-        loginMethod: 'email',
-        userId: `usr_${Date.now().toString().slice(-6)}`,
-        name: emailPrefix,
-        avatar: '',
-        account: targetEmail,
-        email: targetEmail,
-        loginAt: new Date().toLocaleString(),
-        role: 'VIP会员 (邮箱认证)'
-      };
-      onLoginSuccess(session);
-      setIsSubmitting(false);
-    }, 450);
-  };
-
   // Send Real Email Code via Backend SMTP Service
   const handleSendCode = async () => {
     if (!email || !email.includes('@') || !email.includes('.')) {
@@ -281,13 +232,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Quick fill demo email
-  const handleFillDemoEmail = () => {
-    setEmail('dividend_pro@example.com');
-    setPassword('dividend888');
-    setVerifyCode('888666');
-    setErrorMessage(null);
-  };
 
   const formatCountdown = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -525,16 +469,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </button>
                   </div>
 
-                  {/* One-click simulate verification (Essential for preview environment & instant testing) */}
-                  <button
-                    type="button"
-                    onClick={() => handleSimulatePairingSuccess('红利价值学友·张工')}
-                    disabled={isSubmitting}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-md shadow-emerald-950/50 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                    <span>{isSubmitting ? '配对验证成功，正在进入...' : '模拟公众号发送配对码一键极速体验'}</span>
-                  </button>
+                  {/* Real-time Webhook Listening Status */}
+                  <div className="w-full py-2.5 px-3 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-300 text-xs flex items-center justify-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
+                    <span className="text-[11px] text-slate-300 font-medium">公众号后台配对实时侦听中，发送配对码即可自动进入</span>
+                  </div>
                 </div>
 
               </div>
@@ -563,36 +502,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {activeTab === 'email' && (
           <form onSubmit={handleEmailSubmit} className="p-5 sm:p-6 space-y-4">
             
-            {/* Quick 1-Click Fast Login Card for the user */}
-            <div className="p-3.5 rounded-xl bg-gradient-to-r from-rose-950/50 via-slate-900 to-amber-950/40 border border-rose-500/30 flex items-center justify-between gap-3 shadow-inner">
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-300 font-bold text-sm shrink-0">
-                  @
-                </div>
-                <div className="truncate">
-                  <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5 truncate">
-                    <span>wuliisland@gmail.com</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-mono">当前检测账号</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 truncate">
-                    支持免密一键极速登入，立刻解锁全部核心标的与导出权限
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleFastEmailLogin('wuliisland@gmail.com')}
-                disabled={isSubmitting}
-                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-bold text-xs shadow-md shadow-rose-950/40 transition active:scale-95 cursor-pointer shrink-0 flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="w-4 h-4 text-rose-100" />
-                <span>一键登录</span>
-              </button>
-            </div>
-
             <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
-              <span className="font-medium text-slate-300">或输入自定义电子邮箱：</span>
+              <span className="font-medium text-slate-300">电子邮箱登录：</span>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -754,15 +665,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <span>{isSubmitting ? '正在验证并登录...' : '立即验证邮箱并登录'}</span>
             </button>
 
-            {/* Quick Demo Fill & Switch */}
+            {/* Switch & Return */}
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-              <button
-                type="button"
-                onClick={handleFillDemoEmail}
-                className="text-amber-400 hover:text-amber-300 underline underline-offset-2 transition cursor-pointer"
-              >
-                填入测试账号 (dividend_pro@example.com)
-              </button>
+              <span className="text-slate-400">关注公众号免密极速登录</span>
               <button
                 type="button"
                 onClick={() => setActiveTab('wechat')}

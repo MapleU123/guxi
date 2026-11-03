@@ -39,7 +39,7 @@ export const StockDetailModal: React.FC<StockDetailModalProps> = ({
   const [refreshSuccess, setRefreshSuccess] = useState<boolean>(false);
 
   const [investmentAmount, setInvestmentAmount] = useState<number>(100000); // 默认投资10万元
-  const [holdingYears, setHoldingYears] = useState<number>(5); // 模拟持有年数
+  const [holdingYears, setHoldingYears] = useState<number>(5); // 计划持有年数
 
   // 理想股息率建仓测算状态
   const initialTargetYield = (targetWatchItem?.targetDividendYield ?? targetWatchItem?.targetYield) 
