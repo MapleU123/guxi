@@ -646,7 +646,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             {/* Requires SMTP Configuration Banner */}
             {requiresSmtpConfig && (
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2">
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2.5">
                 <div className="flex items-center gap-1.5 font-bold text-amber-200">
                   <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>尚未配置真实邮件发信服务 (SMTP)</span>
@@ -654,19 +654,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <p className="text-[11px] text-amber-200/90 leading-relaxed">
                   为了让用户的真实邮箱能真实收到 6 位数字验证码邮件，需配置一个发信邮箱（如 QQ 或 163 邮箱授权码）。
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setIsSmtpModalOpen(true)}
-                  className="px-3.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                  <span>立即配置【发信邮箱服务 (SMTP)】</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsSmtpModalOpen(true)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>立即配置发信邮箱 (SMTP)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailMode('password');
+                      setErrorMessage(null);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <span>切换为密码登录 (无需发信即可使用)</span>
+                  </button>
+                </div>
               </div>
             )}
 
             {/* Error or Notice Alert */}
-            {errorMessage && (
+            {errorMessage && !requiresSmtpConfig && (
               <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-1.5">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMessage}</span>

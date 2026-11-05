@@ -563,6 +563,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
             {[
               { name: '水电', icon: '🌊', count: industryStockCounts['水电'] || 5, tip: '长江电力/华能水电/川投能源/国投电力/三峡水利' },
               { name: '电信运营商', icon: '📡', count: industryStockCounts['电信运营商'] || 3, tip: '中国移动/中国电信/中国联通' },
+              { name: '家用电器', icon: '🔌', count: industryStockCounts['家用电器'] || 12, tip: '美的集团/格力电器/苏泊尔/新宝股份/飞科电器/海信家电' },
               { name: '大众服饰', icon: '👔', count: industryStockCounts['大众服饰'] || 7, tip: '海澜之家/雅戈尔/森马服饰/报喜鸟/太平鸟/地素/比音勒芬' },
               { name: '纺织服饰', icon: '🧵', count: industryStockCounts['纺织服饰'] || 4, tip: '富安娜/罗莱生活/水星家纺/伟星股份' },
               { name: '保险', icon: '🛡️', count: industryStockCounts['保险'] || 5, tip: '中国平安/中国太保/中国人保/中国人寿/新华保险' },

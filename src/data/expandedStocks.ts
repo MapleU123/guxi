@@ -1962,6 +1962,7 @@ export const EXPANDED_STOCKS: Stock[] = [
   {
     code: '002032',
     name: '苏泊尔',
+    alias: '苏泊尔,SEB,SUPOR',
     pinyin: 'SBE',
     industry: '家用电器',
     market: 'SZ',

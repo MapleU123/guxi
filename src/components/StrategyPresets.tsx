@@ -252,6 +252,7 @@ export const StrategyPresets: React.FC<StrategyPresetsProps> = ({
         {[
           { name: '水电', desc: '长电/华能/川投等大水电金牛', yieldVal: 2.0, peVal: 25 },
           { name: '电信运营商', desc: '移动/电信/联通三大运营商', yieldVal: 3.0, peVal: 20 },
+          { name: '家用电器', desc: '美的/格力/苏泊尔/新宝/飞科等家电蓝筹', yieldVal: 3.5, peVal: 20 },
           { name: '大众服饰', desc: '海澜之家/雅戈尔/森马等高派息', yieldVal: 4.0, peVal: 15 },
           { name: '纺织服饰', desc: '富安娜/罗莱等家纺制造高分红', yieldVal: 4.0, peVal: 15 },
           { name: '保险', desc: '中国平安/太保/人保等险资龙头', yieldVal: 2.5, peVal: 15 },

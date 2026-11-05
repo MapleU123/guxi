@@ -10,6 +10,48 @@ export const INDUSTRY_ENRICHED_STOCKS: Stock[] = [
   // 1. 家用电器 (Home Appliances)
   // =========================================================================
   {
+    code: '002032',
+    name: '苏泊尔',
+    alias: '苏泊尔,SEB,SUPOR',
+    pinyin: 'SBE',
+    industry: '家用电器',
+    market: 'SZ',
+    price: 52.80,
+    change: 0.65,
+    changePercent: 1.25,
+    prevClose: 52.15,
+    lastYearDividendPerShare: 2.73,
+    ttmDividendPerShare: 2.73,
+    staticDividendYield: 5.17,
+    ttmDividendYield: 5.17,
+    dividendYears: 20,
+    payoutRatio: 99.5,
+    dividendCycle: '半年+年度分红',
+    pe: 18.6,
+    pb: 5.60,
+    marketCap: 422.5,
+    roe: 28.5,
+    revGrowth: 9.8,
+    netProfitGrowth: 8.5,
+    isST: false,
+    isDelisted: false,
+    isLeader: true,
+    isAristocrat: true,
+    leaderScore: 91.5,
+    description: '全球小家电巨头SEB集团旗下核心控股平台，国内炊具（压力锅、炒锅）与厨房小家电（电饭煲、破壁机）市占率常年第一梯队。',
+    dividendAdvantage: 'A股罕见的极致现金奶牛，ROE长期保持在25%~30%，近年来现金分红率接近100%，上市20年连续大比例派息。',
+    history: [
+      { year: 2023, dividendPerShare: 2.73, dividendYield: 5.2, payoutRatio: 99.5, cashTotal: 21.90, scheme: '10派27.30元' },
+      { year: 2022, dividendPerShare: 3.03, dividendYield: 6.1, payoutRatio: 118.8, cashTotal: 24.51, scheme: '10派30.30元' },
+      { year: 2021, dividendPerShare: 1.93, dividendYield: 3.8, payoutRatio: 80.5, cashTotal: 15.65, scheme: '10派19.30元' }
+    ],
+    quarterly: [
+      { quarter: '2024Q3', revenue: 165.1, netProfit: 14.3, roe: 28.8 },
+      { quarter: '2024Q2', revenue: 109.6, netProfit: 9.4, roe: 28.2 }
+    ],
+    updateTime: '15:00:00'
+  },
+  {
     code: '000921',
     name: '海信家电',
     alias: '海信,科龙,容声',
@@ -177,7 +219,7 @@ export const INDUSTRY_ENRICHED_STOCKS: Stock[] = [
   {
     code: '002705',
     name: '新宝股份',
-    alias: '东菱,新宝',
+    alias: '新宝,新宝股份,东菱,摩飞,Morphy',
     pinyin: 'XBGF',
     industry: '家用电器',
     market: 'SZ',
@@ -217,7 +259,7 @@ export const INDUSTRY_ENRICHED_STOCKS: Stock[] = [
   {
     code: '603868',
     name: '飞科电器',
-    alias: '飞科',
+    alias: '飞科,飞科电器,FLYCO',
     pinyin: 'FKDQ',
     industry: '家用电器',
     market: 'SH',
