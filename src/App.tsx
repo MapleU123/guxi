@@ -36,6 +36,7 @@ import { getOfficialAccountConfig, verifyOneTapLogin } from './utils/wechatPairi
 const CUSTOM_STOCKS_STORAGE_KEY = 'a_share_dividend_custom_stocks';
 const TARGET_WATCHLIST_STORAGE_KEY = 'a_share_dividend_target_watchlist_v1';
 const USER_SESSION_STORAGE_KEY = 'a_share_user_session_v1';
+const SESSION_TTL_DAYS = 30; // 登录态有效期(天)，过期后需重新通过公众号配对码登录
 
 function loadStoredUserSession(): UserSession | null {
   try {
@@ -43,6 +44,11 @@ function loadStoredUserSession(): UserSession | null {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.isLoggedIn) {
+        // 登录态过期检查：超期则清除并返回未登录，下次需重新登录
+        if (parsed.expiresAt && parsed.expiresAt < Date.now()) {
+          localStorage.removeItem(USER_SESSION_STORAGE_KEY);
+          return null;
+        }
         return parsed;
       }
     }
@@ -166,9 +172,13 @@ export default function App() {
   const [isSmtpConfigModalOpen, setIsSmtpConfigModalOpen] = useState<boolean>(false);
 
   const handleLoginSuccess = useCallback((session: UserSession) => {
-    setUserSession(session);
+    const sessionWithExpiry: UserSession = {
+      ...session,
+      expiresAt: Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
+    };
+    setUserSession(sessionWithExpiry);
     try {
-      localStorage.setItem(USER_SESSION_STORAGE_KEY, JSON.stringify(session));
+      localStorage.setItem(USER_SESSION_STORAGE_KEY, JSON.stringify(sessionWithExpiry));
     } catch (e) {
       console.error('Failed to save user session', e);
     }
@@ -190,6 +200,22 @@ export default function App() {
     }
   }, [handleLoginSuccess]);
 
+  // 微信订阅消息授权回跳：/ ?subscribe=ok|cannel 时给出反馈并清理 URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sub = params.get('subscribe');
+    if (sub === 'ok') {
+      alert('✅ 订阅成功！后续「高股息清单更新」将主动推送到你的微信。');
+    } else if (sub === 'cancel') {
+      alert('未开启推送提醒（你未授权订阅）。');
+    }
+    if (sub) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('subscribe');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
+  }, []);
+
   const handleLogout = useCallback(() => {
     setUserSession(null);
     try {
@@ -198,6 +224,17 @@ export default function App() {
       console.error('Failed to remove user session', e);
     }
   }, []);
+
+  // 登录态过期自动登出：会话超期且用户仍停留在页面时，自动清除登录态
+  useEffect(() => {
+    if (!userSession?.expiresAt) return;
+    const timer = setInterval(() => {
+      if (Date.now() > (userSession.expiresAt as number)) {
+        handleLogout();
+      }
+    }, 60 * 1000);
+    return () => clearInterval(timer);
+  }, [userSession?.expiresAt, handleLogout]);
 
   const [authModalTab, setAuthModalTab] = useState<'wechat' | 'email'>('wechat');
 

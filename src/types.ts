@@ -325,4 +325,5 @@ export interface UserSession {
   wechatNickname?: string;
   loginAt: string;
   role: 'VIP会员' | '实名认证用户' | 'VIP会员 (公众号已关注)' | 'VIP会员 (邮箱认证)' | string;
+  expiresAt?: number; // 登录态过期时间戳(ms)，由前端在登录成功时注入并校验；缺失则视为永久(兼容旧数据)
 }

@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 // WeChat Official Account Pairing Service (website-to-wechat)
 // Handles pairing codes, status polling, and WeChat Webhook callbacks
 
@@ -25,7 +28,9 @@ const DEFAULT_WECHAT_CONFIG: WeChatConfig = {
   name: '我爱这young',
   wechatId: 'gh_7d39de02f610',
   qrImageUrl: '/assets/qrcode_gh_7d39de02f610.jpg',
-  token: process.env.WECHAT_TOKEN || 'a_share_dividend_wechat_token'
+  token: process.env.WECHAT_TOKEN || 'a_share_dividend_wechat_token',
+  appId: process.env.WECHAT_MP_APP_ID || '',
+  appSecret: process.env.WECHAT_MP_APP_SECRET || ''
 };
 
 // In-memory pairing sessions map: code -> session
@@ -166,4 +171,226 @@ export function buildWeChatReplyXml(
 <MsgType><![CDATA[text]]></MsgType>
 <Content><![CDATA/${content}]]></Content>
 </xml>`.replace('<![CDATA/', '<![CDATA[');
+}
+
+/**
+ * 构造微信「图片消息」回复 XML (MsgType=image)。
+ * 图片必须先在微信后台「素材管理」上传, 拿到永久 media_id 后填入配置。
+ * 注意: 下发图片不需要 access_token, 只要 media_id 有效即可。
+ */
+export function buildWeChatImageReplyXml(
+  toUser: string,
+  fromUser: string,
+  mediaId: string
+): string {
+  const createTime = Math.floor(Date.now() / 1000);
+  return `<xml>
+<ToUserName><![CDATA[${toUser}]]></ToUserName>
+<FromUserName><![CDATA[${fromUser}]]></FromUserName>
+<CreateTime>${createTime}</CreateTime>
+<MsgType><![CDATA[image]]></MsgType>
+<Image>
+<MediaId><![CDATA[${mediaId}]]></MediaId>
+</Image>
+</xml>`;
+}
+
+/**
+ * 用真实微信昵称替换文本中的占位符 {微信名} / {nickname}。
+ * 无法获取昵称时回退为「朋友」, 保证语句通顺。
+ */
+export function fillNickname(template: string, nickname: string | null): string {
+  const name = nickname && nickname.trim() ? nickname.trim() : '朋友';
+  return template
+    .replace(/\{微信名\}/g, name)
+    .replace(/\{nickname\}/gi, name);
+}
+
+// 微信昵称缓存: user/info 有调用频率限制, 缓存 12 小时降低压力
+const userInfoCache = new Map<string, { nickname: string; headimgurl: string; expiresAt: number }>();
+
+/**
+ * 获取粉丝真实的微信昵称与头像 (需配置 AppID + AppSecret)。
+ * 订阅号下, 仅对「已关注/已互动」用户可拿到基础资料。
+ * 失败、未配置或超时均返回 null, 由调用方回退为通用称呼。
+ */
+export async function getWeChatUserInfo(
+  openid: string,
+  timeoutMs = 4000
+): Promise<{ nickname: string; headimgurl: string } | null> {
+  const cfg = getWeChatConfig();
+  if (!cfg.appId || !cfg.appSecret || !openid) return null;
+
+  const cached = userInfoCache.get(openid);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { nickname: cached.nickname, headimgurl: cached.headimgurl };
+  }
+
+  try {
+    const token = await getWeChatAccessToken();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(
+      `https://api.weixin.qq.com/cgi-bin/user/info?access_token=${token}&openid=${openid}&lang=zh_CN`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    const data = (await res.json()) as { nickname?: string; headimgurl?: string; errcode?: number };
+    if (data && data.nickname) {
+      userInfoCache.set(openid, {
+        nickname: data.nickname,
+        headimgurl: data.headimgurl || '',
+        expiresAt: Date.now() + 12 * 60 * 60 * 1000
+      });
+      return { nickname: data.nickname, headimgurl: data.headimgurl || '' };
+    }
+    if (data?.errcode) {
+      console.warn(`[wechat] user/info errcode=${data.errcode} (openid=${openid})`);
+    }
+    return null;
+  } catch (e) {
+    console.warn('[wechat] getWeChatUserInfo failed', e);
+    return null;
+  }
+}
+
+// ============================================================
+// 11. 微信订阅消息 (一次性订阅) — 主动推送基础设施
+// ============================================================
+
+/**
+ * 订阅场景: scene 为 1-255 整数,对应微信后台「订阅消息 → 我的模板」的某一模板。
+ * 在微信后台创建模板后,把 template_id 填入对应环境变量。
+ */
+export const SUBSCRIBE_SCENES: Record<string, { scene: number; templateId: string; title: string }> = {
+  stockUpdate: {
+    scene: 1,
+    templateId: process.env.WECHAT_MP_SUB_TEMPLATE_STOCK || '',
+    title: '高股息清单更新'
+  }
+};
+
+export interface WeChatSubscription {
+  openid: string;
+  scene: number;
+  templateId: string;
+  ticket: string;       // 一次订阅授权凭证
+  createdAt: number;
+  usedAt?: number;      // 推送后标记,一次性订阅用掉即失效
+}
+
+// 持久化: 文件存储(容器内有效;生产建议换 Netlify Blob / 数据库)
+const SUB_STORE_PATH = process.env.WECHAT_SUB_STORE_PATH ||
+  path.join(process.cwd(), 'data', 'wechat_subs.json');
+const subscriptions = new Map<string, WeChatSubscription>(); // key: openid|scene
+
+function loadSubs(): void {
+  try {
+    if (fs.existsSync(SUB_STORE_PATH)) {
+      const arr = JSON.parse(fs.readFileSync(SUB_STORE_PATH, 'utf-8')) as WeChatSubscription[];
+      arr.forEach((s) => subscriptions.set(`${s.openid}|${s.scene}`, s));
+    }
+  } catch { /* ignore */ }
+}
+function saveSubs(): void {
+  try {
+    fs.mkdirSync(path.dirname(SUB_STORE_PATH), { recursive: true });
+    fs.writeFileSync(SUB_STORE_PATH, JSON.stringify([...subscriptions.values()], null, 2));
+  } catch (e) { console.warn('[wechat] saveSubs failed', e); }
+}
+loadSubs();
+
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+/** 获取/缓存 access_token(有效期 7200s),推送与取用户信息都需要它 */
+export async function getWeChatAccessToken(): Promise<string> {
+  const cfg = getWeChatConfig();
+  if (!cfg.appId || !cfg.appSecret) {
+    throw new Error('缺少 AppID / AppSecret: 请配置环境变量 WECHAT_MP_APP_ID 与 WECHAT_MP_APP_SECRET');
+  }
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 5 * 60 * 1000) {
+    return cachedToken.token;
+  }
+  const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${cfg.appId}&secret=${cfg.appSecret}`;
+  const res = await fetch(url);
+  const data = await res.json() as { access_token?: string; expires_in?: number; errmsg?: string };
+  if (data.access_token) {
+    cachedToken = { token: data.access_token, expiresAt: Date.now() + (data.expires_in || 7200) * 1000 };
+    return cachedToken.token;
+  }
+  throw new Error(data.errmsg || '获取 access_token 失败');
+}
+
+/** 生成「一次性订阅消息」授权链接,前端按钮点击后跳转(必须在微信内打开) */
+export function buildSubscribeUrl(scene: number, templateId: string): string {
+  const cfg = getWeChatConfig();
+  const site = process.env.SITE_URL || 'https://a-studio-1816.ai.studio';
+  const redirect = encodeURIComponent(`${site}/api/wechat/subscribe/callback`);
+  const reserved = encodeURIComponent(`scene_${scene}`);
+  return `https://mp.weixin.qq.com/mp/subscribemsg?action=get_confirm&appid=${cfg.appId}` +
+    `&scene=${scene}&template_id=${templateId}&redirect_url=${redirect}&reserved=${reserved}#wechat_redirect`;
+}
+
+/** 处理微信订阅授权回调 (用户确认后微信重定向到此) */
+export function handleSubscribeCallback(params: Record<string, string>): { ok: boolean; message: string } {
+  const { openid, template_id, scene, ticket, action } = params;
+  if (action !== 'confirm' || !openid || !template_id) {
+    return { ok: false, message: '用户未授权订阅' };
+  }
+  const key = `${openid}|${scene}`;
+  subscriptions.set(key, {
+    openid,
+    scene: Number(scene),
+    templateId: template_id,
+    ticket,
+    createdAt: Date.now()
+  });
+  saveSubs();
+  return { ok: true, message: '订阅授权成功' };
+}
+
+/** 发送一条订阅消息给指定 openid */
+export async function sendSubscriptionMessage(
+  openid: string,
+  templateId: string,
+  data: Record<string, { value: string }>,
+  url?: string
+): Promise<{ ok: boolean; errmsg?: string }> {
+  const token = await getWeChatAccessToken();
+  const body = {
+    touser: openid,
+    template_id: templateId,
+    url: url || process.env.SITE_URL || 'https://a-studio-1816.ai.studio',
+    data
+  };
+  const res = await fetch(`https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const result = await res.json() as { errcode?: number; errmsg?: string };
+  return { ok: result.errcode === 0, errmsg: result.errmsg };
+}
+
+/** 向某场景下所有已订阅用户推送一条消息(一次性订阅,发完即标记 used) */
+export async function pushToScene(
+  scene: number,
+  data: Record<string, { value: string }>,
+  url?: string
+): Promise<{ sent: number; failed: number }> {
+  let sent = 0;
+  let failed = 0;
+  for (const sub of subscriptions.values()) {
+    if (sub.scene !== scene || sub.usedAt) continue;
+    const r = await sendSubscriptionMessage(sub.openid, sub.templateId, data, url);
+    if (r.ok) {
+      sub.usedAt = Date.now();
+      sent++;
+    } else {
+      failed++;
+      console.warn(`[wechat] push failed for ${sub.openid}: ${r.errmsg}`);
+    }
+  }
+  saveSubs();
+  return { sent, failed };
 }

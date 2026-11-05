@@ -495,6 +495,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
             </div>
 
+            {/* 订阅消息: 主动推送提醒 (一次性订阅, 用户需在微信内点授权) */}
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const resp = await fetch('/api/wechat/subscribe-url?scene=stockUpdate');
+                  const json = await resp.json();
+                  if (json.success && json.url) {
+                    window.location.href = json.url;
+                  } else {
+                    alert(json.message || '订阅模板未配置, 请联系管理员');
+                  }
+                } catch (e) {
+                  alert('获取订阅链接失败');
+                }
+              }}
+              className="w-full py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
+            >
+              <Radio className="w-4 h-4" />
+              <span>🔔 开启「高股息清单更新」推送提醒</span>
+            </button>
+            <p className="text-[10px] text-slate-500 text-center -mt-1">
+              需在微信内打开本页并点授权, 授权后我们可推送 1 条更新提醒 (一次性订阅)
+            </p>
+
           </div>
         )}
 

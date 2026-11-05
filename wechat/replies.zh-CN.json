@@ -1,6 +1,6 @@
 {
-  "subscribe": "感谢关注「我爱这young」——你的 A 股高股息筛选器。\n· 拿高股息清单：回复「股息」，发你高股息率股票一览表。\n· 登录网站：回复「登录」，微信里点链接一键登录。\n· 拿资料/长图：回复「下载」。\n· 网站 a-studio-1816.ai.studio",
-  "default": "没太明白～回复「股息」拿高股息清单，回复「登录」登录网站，或回复「下载」拿资料。",
+  "subscribe": "感谢关注「我爱这young」——你的 A 股高股息筛选器。{微信名}，你好！\n· 拿高股息清单：回复「股息」，发你高股息率股票一览表。\n· 登录网站：回复「登录」，微信里点链接一键登录。\n· 拿资料/长图：回复「下载」。\n· 加我微信：leungmaple（一对一交流）\n· 网站 a-studio-1816.ai.studio",
+  "default": "{微信名}，没太明白～回复「股息」拿高股息清单，回复「登录」登录网站，或回复「下载」拿资料。也可以加我微信 leungmaple 一对一交流。",
   "menus": [
     {
       "key": "MENU_DOWNLOAD",
@@ -22,22 +22,33 @@
     {
       "keyword": "股息",
       "mode": "contains",
-      "reply": "【騰訊文檔】高股息率股票一览表 https://docs.qq.com/sheet/DU2ZySkJYU3hoRmtK"
+      "reply": "{微信名}，这是高股息率股票一览表 👇\n【騰訊文檔】https://docs.qq.com/sheet/DU2ZySkJYU3hoRmtK"
     },
     {
       "keyword": "筛选",
       "mode": "contains",
-      "reply": "在网站首页按「龙头综合分」筛选高股息股票，可导出长图/Excel。回复「下载」拿清单，或回复「登录」登录保存自选池。"
+      "reply": "{微信名}，在网站首页按「龙头综合分」筛选高股息股票，可导出长图/Excel。回复「下载」拿清单，或回复「登录」登录保存自选池。"
     },
     {
       "keyword": "帮助",
       "mode": "contains",
-      "reply": "回复「股息」拿高股息清单；回复「登录」登录网站；回复「下载」拿资料。网站地址 a-studio-1816.ai.studio。"
+      "reply": "{微信名}，回复「股息」拿高股息清单；回复「登录」登录网站；回复「下载」拿资料。网站地址 a-studio-1816.ai.studio。"
     },
     {
       "keyword": "客服",
       "mode": "contains",
-      "reply": "有问题直接在这里留言，我看到会回复。也可以去网站 a-studio-1816.ai.studio 使用筛选器。"
+      "reply": "有问题直接在这里留言，我看到会回复；也可以加我微信 leungmaple 一对一交流～ 网站 a-studio-1816.ai.studio"
+    },
+    {
+      "keyword": "加微信",
+      "mode": "contains",
+      "reply": "{微信名}，这是我的个人微信：leungmaple，微信里搜索添加即可，欢迎交流～"
+    },
+    {
+      "keyword": "海报",
+      "mode": "contains",
+      "type": "image",
+      "mediaId": "REPLACE_WITH_WECHAT_MEDIA_ID"
     }
   ]
 }

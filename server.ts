@@ -16,7 +16,16 @@ import {
   confirmPairing,
   getWeChatConfig,
   parseWeChatXml,
-  buildWeChatReplyXml
+  buildWeChatReplyXml,
+  buildWeChatImageReplyXml,
+  getWeChatUserInfo,
+  fillNickname,
+  getWeChatAccessToken,
+  buildSubscribeUrl,
+  handleSubscribeCallback,
+  sendSubscriptionMessage,
+  pushToScene,
+  SUBSCRIBE_SCENES
 } from './src/server/wechatService';
 import { createWebhookHandler } from './wechat/webhook';
 import { issueLoginCode } from './wechat/pairing';
@@ -471,6 +480,7 @@ app.post('/api/wechat/pair', (req, res) => {
 
 const WECHAT_MP_CONFIG = {
   appId: process.env.WECHAT_MP_APP_ID || '',
+  appSecret: process.env.WECHAT_MP_APP_SECRET || '',
   originalId: process.env.WECHAT_MP_ORIGINAL_ID || 'gh_7d39de02f610',
   token: process.env.WECHAT_MP_TOKEN || process.env.WECHAT_TOKEN || 'a_share_dividend_wechat_token',
   aesKey: process.env.WECHAT_MP_AES_KEY || '',
@@ -594,12 +604,15 @@ app.post('/api/wechat/webhook', async (req, res) => {
 
     // 当用户发送 6 位数字验证码时自动配对 (支持纯文本模式)
     if (msgType === 'text' && /^\d{6}$/.test(content)) {
+      const info = await getWeChatUserInfo(fromUser);
       confirmPairing(content, {
         openid: fromUser,
-        nickname: `微信用户_${fromUser.slice(-4)}`
+        nickname: info ? info.nickname : `微信用户_${fromUser.slice(-4)}`,
+        avatar: info ? info.headimgurl : undefined
       });
 
-      const replyText = `🎉 恭喜！配对码【${content}】验证成功！\n\n已为您解锁全站 5,652 支股票数据、理想股息率备选池测算及高清长图导出权限，立即返回浏览器即可开始使用。`;
+      const namePrefix = info ? `${info.nickname}，` : '';
+      const replyText = `🎉 恭喜${namePrefix}配对码【${content}】验证成功！\n\n已为您解锁全站 5,652 支股票数据、理想股息率备选池测算及高清长图导出权限，立即返回浏览器即可开始使用。`;
       const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
       res.type('application/xml').send(replyXml);
       return;
@@ -607,34 +620,67 @@ app.post('/api/wechat/webhook', async (req, res) => {
 
     // 登录关键词
     if (msgType === 'text' && (content === '登录' || content.toLowerCase() === 'login')) {
+      const info = await getWeChatUserInfo(fromUser);
       const sess = generatePairingCode();
       confirmPairing(sess.code, {
         openid: fromUser,
-        nickname: `微信用户_${fromUser.slice(-4)}`
+        nickname: info ? info.nickname : `微信用户_${fromUser.slice(-4)}`,
+        avatar: info ? info.headimgurl : undefined
       });
       const siteUrl = process.env.SITE_URL || 'https://a-studio-1816.ai.studio';
-      const replyText = `您的登录码为：${sess.code}（10分钟内有效）\n\n👉 微信内一键免密登录：\n${siteUrl}/?wechat_login=${sess.code}\n\n或者在网页直接输入该 6 位配对码完成授权。`;
+      const namePrefix = info ? `${info.nickname}，` : '';
+      const replyText = `${namePrefix}您的登录码为：${sess.code}（10分钟内有效）\n\n👉 微信内一键免密登录：\n${siteUrl}/?wechat_login=${sess.code}\n\n或者在网页直接输入该 6 位配对码完成授权。`;
       const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
       res.type('application/xml').send(replyXml);
       return;
     }
 
-    // 关注事件欢迎语
+    // 关注事件欢迎语 (支持 {微信名} 占位符)
     if (msgType === 'event' && msg.Event === 'subscribe') {
-      const welcomeText = officialReplies.subscribe || `您好！欢迎关注【我爱这young】。\n\n如需登录网站解锁全部高股息投研功能，请在网页点击「公众号关注登录」获取 6 位数字配对码，并直接在此回复该 6 位配对码即可免密极速登录！`;
+      const info = await getWeChatUserInfo(fromUser);
+      const welcomeText = fillNickname(
+        officialReplies.subscribe || `您好！欢迎关注【我爱这young】。\n\n如需登录网站解锁全部高股息投研功能，请在网页点击「公众号关注登录」获取 6 位数字配对码，并直接在此回复该 6 位配对码即可免密极速登录！`,
+        info ? info.nickname : null
+      );
       const replyXml = buildWeChatReplyXml(fromUser, toUser, welcomeText);
       res.type('application/xml').send(replyXml);
       return;
     }
 
-    // 关键词自动回复
+    // 关键词自动回复 (支持 图片回复 与 微信昵称个性化)
     if (msgType === 'text' && officialReplies.keywords) {
       const matched = officialReplies.keywords.find((k: any) => k.keyword && content.includes(k.keyword));
-      if (matched && matched.reply) {
-        const replyXml = buildWeChatReplyXml(fromUser, toUser, matched.reply);
+      if (matched) {
+        const info = await getWeChatUserInfo(fromUser);
+        const nickname = info ? info.nickname : null;
+        // 图片回复: 取微信后台素材 media_id 直接下发
+        if (matched.type === 'image') {
+          if (matched.mediaId && !/^REPLACE_/i.test(String(matched.mediaId))) {
+            const imgXml = buildWeChatImageReplyXml(fromUser, toUser, matched.mediaId);
+            res.type('application/xml').send(imgXml);
+          } else {
+            // 未配置有效 media_id: 降级为文本提示, 避免下发无效图片导致微信报错
+            const fallback = matched.fallback || '该图片尚未配置完成，请稍后再试，或回复「股息」拿清单。';
+            const replyXml = buildWeChatReplyXml(fromUser, toUser, fillNickname(fallback, nickname));
+            res.type('application/xml').send(replyXml);
+          }
+          return;
+        }
+        // 文本回复: 替换 {微信名} 占位符为粉丝真实昵称
+        const replyText = fillNickname(matched.reply || '', nickname);
+        const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
         res.type('application/xml').send(replyXml);
         return;
       }
+    }
+
+    // 未匹配关键词: 发送默认回复 (同样支持 {微信名} 占位符)
+    if (msgType === 'text' && officialReplies.default) {
+      const info = await getWeChatUserInfo(fromUser);
+      const replyText = fillNickname(officialReplies.default, info ? info.nickname : null);
+      const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
+      res.type('application/xml').send(replyXml);
+      return;
     }
 
     res.send('success');
@@ -655,6 +701,49 @@ app.get('/api/wechat/config', (req, res) => {
       qrImageUrl: config.qrImageUrl
     }
   });
+});
+
+// 10.7 生成订阅消息授权链接 (前端按钮点击后跳转微信授权)
+app.get('/api/wechat/subscribe-url', (req, res) => {
+  const sceneKey = (req.query.scene as string) || 'stockUpdate';
+  const sceneMap = SUBSCRIBE_SCENES[sceneKey];
+  if (!sceneMap || !sceneMap.templateId) {
+    return res.status(400).json({
+      success: false,
+      message: '未配置该场景的订阅模板 template_id。请在微信后台「订阅消息 → 我的模板」创建模板,并将 template_id 填入环境变量 WECHAT_MP_SUB_TEMPLATE_STOCK'
+    });
+  }
+  const url = buildSubscribeUrl(sceneMap.scene, sceneMap.templateId);
+  res.json({ success: true, url, title: sceneMap.title });
+});
+
+// 10.8 微信订阅授权回调 (用户确认后微信重定向到此)
+app.get('/api/wechat/subscribe/callback', (req, res) => {
+  const r = handleSubscribeCallback(req.query as Record<string, string>);
+  const site = process.env.SITE_URL || 'https://a-studio-1816.ai.studio';
+  return res.redirect(`${site}/?subscribe=${r.ok ? 'ok' : 'cancel'}`);
+});
+
+// 10.9 主动推送 (运营/测试触发; 一次性订阅, 每位用户发完即失效需重新授权)
+app.post('/api/wechat/push', async (req, res) => {
+  const body = req.body || {};
+  const sceneKey = body.scene || 'stockUpdate';
+  const sceneMap = SUBSCRIBE_SCENES[sceneKey];
+  if (!sceneMap) {
+    return res.status(400).json({ success: false, message: '未知订阅场景' });
+  }
+  // 支持直接传 data(与微信模板字段对应); 否则用简单 title/content 映射
+  const data = body.data || {
+    first: { value: body.title || `${sceneMap.title}提醒` },
+    keyword1: { value: body.content || '' },
+    remark: { value: '点击查看详情 →' }
+  };
+  try {
+    const result = await pushToScene(sceneMap.scene, data, body.url);
+    res.json({ success: true, ...result });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message || '推送失败' });
+  }
 });
 
 // Vite middleware configuration for Full-Stack
