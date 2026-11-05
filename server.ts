@@ -489,12 +489,16 @@ const WECHAT_MP_CONFIG = {
 };
 
 let officialReplies: any = {};
-try {
-  const repliesRaw = fs.readFileSync(path.join(process.cwd(), 'wechat', 'replies.zh-CN.json'), 'utf-8');
-  officialReplies = JSON.parse(repliesRaw);
-} catch (e) {
-  console.warn('Could not load wechat replies.zh-CN.json', e);
+function loadOfficialReplies(): any {
+  try {
+    const repliesRaw = fs.readFileSync(path.join(process.cwd(), 'wechat', 'replies.zh-CN.json'), 'utf-8');
+    officialReplies = JSON.parse(repliesRaw);
+  } catch (e) {
+    console.warn('Could not load wechat replies.zh-CN.json', e);
+  }
+  return officialReplies;
 }
+loadOfficialReplies();
 
 const officialWebhookHandler = createWebhookHandler({
   config: WECHAT_MP_CONFIG,
@@ -635,11 +639,13 @@ app.post('/api/wechat/webhook', async (req, res) => {
       return;
     }
 
+    const currentReplies = loadOfficialReplies();
+
     // 关注事件欢迎语 (支持 {微信名} 占位符)
     if (msgType === 'event' && msg.Event === 'subscribe') {
       const info = await getWeChatUserInfo(fromUser);
       const welcomeText = fillNickname(
-        officialReplies.subscribe || `您好！欢迎关注【我爱这young】。\n\n如需登录网站解锁全部高股息投研功能，请在网页点击「公众号关注登录」获取 6 位数字配对码，并直接在此回复该 6 位配对码即可免密极速登录！`,
+        currentReplies.subscribe || `您好！欢迎关注【我爱这young】。\n\n如需登录网站解锁全部高股息投研功能，请在网页点击「公众号关注登录」获取 6 位数字配对码，并直接在此回复该 6 位配对码即可免密极速登录！`,
         info ? info.nickname : null
       );
       const replyXml = buildWeChatReplyXml(fromUser, toUser, welcomeText);
@@ -648,8 +654,11 @@ app.post('/api/wechat/webhook', async (req, res) => {
     }
 
     // 关键词自动回复 (支持 图片回复 与 微信昵称个性化)
-    if (msgType === 'text' && officialReplies.keywords) {
-      const matched = officialReplies.keywords.find((k: any) => k.keyword && content.includes(k.keyword));
+    if (msgType === 'text' && currentReplies.keywords) {
+      const lowerContent = content.toLowerCase();
+      const matched = currentReplies.keywords.find((k: any) => 
+        k.keyword && (content.includes(k.keyword) || lowerContent.includes(String(k.keyword).toLowerCase()))
+      );
       if (matched) {
         const info = await getWeChatUserInfo(fromUser);
         const nickname = info ? info.nickname : null;
@@ -675,9 +684,9 @@ app.post('/api/wechat/webhook', async (req, res) => {
     }
 
     // 未匹配关键词: 发送默认回复 (同样支持 {微信名} 占位符)
-    if (msgType === 'text' && officialReplies.default) {
+    if (msgType === 'text' && currentReplies.default) {
       const info = await getWeChatUserInfo(fromUser);
-      const replyText = fillNickname(officialReplies.default, info ? info.nickname : null);
+      const replyText = fillNickname(currentReplies.default, info ? info.nickname : null);
       const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
       res.type('application/xml').send(replyXml);
       return;
