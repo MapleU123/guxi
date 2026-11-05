@@ -40,30 +40,29 @@
       "reply": "有问题直接在这里留言，我看到会回复；也可以加我微信 leungmaple 一对一交流～ 网站 a-studio-1816.ai.studio"
     },
     {
-      "keyword": "微信",
-      "mode": "contains",
-      "reply": "+V：leungmaple"
-    },
-    {
       "keyword": "加微信",
       "mode": "contains",
-      "reply": "+V：leungmaple"
-    },
-    {
-      "keyword": "群",
-      "mode": "contains",
-      "reply": "+V：leungmaple"
-    },
-    {
-      "keyword": "网格",
-      "mode": "contains",
-      "reply": "+V：leungmaple"
+      "reply": "{微信名}，这是我的个人微信：leungmaple，微信里搜索添加即可，欢迎交流～"
     },
     {
       "keyword": "海报",
       "mode": "contains",
       "type": "image",
       "mediaId": "REPLACE_WITH_WECHAT_MEDIA_ID"
+    },
+    {
+      "keyword": "群",
+      "mode": "contains",
+      "type": "image",
+      "mediaId": "f8e384229cd4a223ed008ce7c954c6ac",
+      "fallback": "{微信名}，这是我的微信二维码，正在准备中～也可以直接搜索 leungmaple 加我好友。"
+    },
+    {
+      "keyword": "网格",
+      "mode": "contains",
+      "type": "image",
+      "mediaId": "f8e384229cd4a223ed008ce7c954c6ac",
+      "fallback": "{微信名}，这是我的微信二维码，正在准备中～也可以直接搜索 leungmaple 加我好友。"
     }
   ]
 }
