@@ -54,36 +54,29 @@
       "keyword": "群",
       "mode": "contains",
       "type": "image",
-      "mediaId": "REPLACE_WITH_WECHAT_MEDIA_ID",
-      "fallback": "{微信名}，这是入群 / ETF 交流的微信二维码与联系方式 👇\n· 个人微信号：leungmaple（微信搜索添加好友）\n· 验证备注：加群 / ETF\n· 查看二维码图片：https://ais-pre-uiv6mxvqstlm5evgvlefvx-21168751131.europe-west2.run.app/assets/aistudio/image_5a13498c.png\n\n收到后第一时间拉你进高股息交流群～"
+      "mediaId": "f8e384229cd4a223ed008ce7c954c6ac",
+      "fallback": "{微信名}，这是我的微信二维码，正在准备中～也可以直接搜索 leungmaple 加我好友。"
     },
     {
       "keyword": "网格",
       "mode": "contains",
       "type": "image",
-      "mediaId": "REPLACE_WITH_WECHAT_MEDIA_ID",
-      "fallback": "{微信名}，这是入群 / ETF 交流的微信二维码与联系方式 👇\n· 个人微信号：leungmaple（微信搜索添加好友）\n· 验证备注：加群 / ETF\n· 查看二维码图片：https://ais-pre-uiv6mxvqstlm5evgvlefvx-21168751131.europe-west2.run.app/assets/aistudio/image_5a13498c.png\n\n收到后第一时间拉你进高股息交流群～"
+      "mediaId": "f8e384229cd4a223ed008ce7c954c6ac",
+      "fallback": "{微信名}，这是我的微信二维码，正在准备中～也可以直接搜索 leungmaple 加我好友。"
     },
     {
       "keyword": "入群",
       "mode": "contains",
       "type": "image",
-      "mediaId": "REPLACE_WITH_WECHAT_MEDIA_ID",
-      "fallback": "{微信名}，这是入群 / ETF 交流的微信二维码与联系方式 👇\n· 个人微信号：leungmaple（微信搜索添加好友）\n· 验证备注：加群 / ETF\n· 查看二维码图片：https://ais-pre-uiv6mxvqstlm5evgvlefvx-21168751131.europe-west2.run.app/assets/aistudio/image_5a13498c.png\n\n收到后第一时间拉你进高股息交流群～"
-    },
-    {
-      "keyword": "加群",
-      "mode": "contains",
-      "type": "image",
-      "mediaId": "REPLACE_WITH_WECHAT_MEDIA_ID",
-      "fallback": "{微信名}，这是入群 / ETF 交流的微信二维码与联系方式 👇\n· 个人微信号：leungmaple（微信搜索添加好友）\n· 验证备注：加群 / ETF\n· 查看二维码图片：https://ais-pre-uiv6mxvqstlm5evgvlefvx-21168751131.europe-west2.run.app/assets/aistudio/image_5a13498c.png\n\n收到后第一时间拉你进高股息交流群～"
+      "mediaId": "f8e384229cd4a223ed008ce7c954c6ac",
+      "fallback": "{微信名}，这是我的微信二维码，正在准备中～也可以直接搜索 leungmaple 加我好友。"
     },
     {
       "keyword": "ETF",
       "mode": "contains",
       "type": "image",
-      "mediaId": "REPLACE_WITH_WECHAT_MEDIA_ID",
-      "fallback": "{微信名}，这是入群 / ETF 交流的微信二维码与联系方式 👇\n· 个人微信号：leungmaple（微信搜索添加好友）\n· 验证备注：加群 / ETF\n· 查看二维码图片：https://ais-pre-uiv6mxvqstlm5evgvlefvx-21168751131.europe-west2.run.app/assets/aistudio/image_5a13498c.png\n\n收到后第一时间拉你进高股息交流群～"
+      "mediaId": "f8e384229cd4a223ed008ce7c954c6ac",
+      "fallback": "{微信名}，这是我的微信二维码，正在准备中～也可以直接搜索 leungmaple 加我好友。"
     }
   ]
 }
