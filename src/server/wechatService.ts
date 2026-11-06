@@ -418,24 +418,44 @@ function saveSubs(): void {
 loadSubs();
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
+let tokenErrorCooldown: { message: string; expiresAt: number } | null = null;
 
 /** 获取/缓存 access_token(有效期 7200s),推送与取用户信息都需要它 */
 export async function getWeChatAccessToken(): Promise<string> {
   const cfg = getWeChatConfig();
   if (!cfg.appId || !cfg.appSecret) {
-    throw new Error('缺少 AppID / AppSecret: 请配置环境变量 WECHAT_MP_APP_ID 与 WECHAT_MP_APP_SECRET');
+    throw new Error('缺少 AppID / AppSecret');
   }
   if (cachedToken && cachedToken.expiresAt > Date.now() + 5 * 60 * 1000) {
     return cachedToken.token;
   }
-  const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${cfg.appId}&secret=${cfg.appSecret}`;
-  const res = await fetch(url);
-  const data = await res.json() as { access_token?: string; expires_in?: number; errmsg?: string };
-  if (data.access_token) {
-    cachedToken = { token: data.access_token, expiresAt: Date.now() + (data.expires_in || 7200) * 1000 };
-    return cachedToken.token;
+  if (tokenErrorCooldown && tokenErrorCooldown.expiresAt > Date.now()) {
+    throw new Error(tokenErrorCooldown.message);
   }
-  throw new Error(data.errmsg || '获取 access_token 失败');
+
+  const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${cfg.appId}&secret=${cfg.appSecret}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1200);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    const data = await res.json() as { access_token?: string; expires_in?: number; errmsg?: string; errcode?: number };
+    if (data.access_token) {
+      cachedToken = { token: data.access_token, expiresAt: Date.now() + (data.expires_in || 7200) * 1000 };
+      tokenErrorCooldown = null;
+      return cachedToken.token;
+    }
+    const errMsg = data.errmsg || '获取 access_token 失败';
+    tokenErrorCooldown = { message: errMsg, expiresAt: Date.now() + 60 * 1000 };
+    throw new Error(errMsg);
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (!tokenErrorCooldown) {
+      tokenErrorCooldown = { message: err.message || '网络超时', expiresAt: Date.now() + 30 * 1000 };
+    }
+    throw err;
+  }
 }
 
 /** 生成「一次性订阅消息」授权链接,前端按钮点击后跳转(必须在微信内打开) */
