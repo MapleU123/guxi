@@ -138,7 +138,7 @@ export function confirmPairing(
  */
 export function parseWeChatXml(xml: string): Record<string, string> {
   const result: Record<string, string> = {};
-  const tags = ['ToUserName', 'FromUserName', 'CreateTime', 'MsgType', 'Content', 'MsgId', 'Event', 'EventKey'];
+  const tags = ['ToUserName', 'FromUserName', 'CreateTime', 'MsgType', 'Content', 'MsgId', 'Event', 'EventKey', 'Encrypt'];
   
   for (const tag of tags) {
     // Match <Tag><![CDATA[value]]></Tag> or <Tag>value</Tag>
@@ -196,6 +196,33 @@ export function buildWeChatImageReplyXml(
 }
 
 /**
+ * 构造微信「单条图文消息」回复 XML (MsgType=news)。
+ * 图文消息无需 media_id，支持直接展示外链图片缩略图与跳转链接。
+ */
+export function buildWeChatNewsReplyXml(
+  toUser: string,
+  fromUser: string,
+  article: { title: string; description: string; picUrl: string; url: string }
+): string {
+  const createTime = Math.floor(Date.now() / 1000);
+  return `<xml>
+<ToUserName><![CDATA[${toUser}]]></ToUserName>
+<FromUserName><![CDATA[${fromUser}]]></FromUserName>
+<CreateTime>${createTime}</CreateTime>
+<MsgType><![CDATA[news]]></MsgType>
+<ArticleCount>1</ArticleCount>
+<Articles>
+<item>
+<Title><![CDATA[${article.title}]]></Title>
+<Description><![CDATA[${article.description}]]></Description>
+<PicUrl><![CDATA[${article.picUrl}]]></PicUrl>
+<Url><![CDATA[${article.url}]]></Url>
+</item>
+</Articles>
+</xml>`;
+}
+
+/**
  * 用真实微信昵称替换文本中的占位符 {微信名} / {nickname}。
  * 无法获取昵称时回退为「朋友」, 保证语句通顺。
  */
@@ -211,12 +238,11 @@ const userInfoCache = new Map<string, { nickname: string; headimgurl: string; ex
 
 /**
  * 获取粉丝真实的微信昵称与头像 (需配置 AppID + AppSecret)。
- * 订阅号下, 仅对「已关注/已互动」用户可拿到基础资料。
- * 失败、未配置或超时均返回 null, 由调用方回退为通用称呼。
+ * 默认 600ms 超时，避免拖慢回复导致微信官方 5 秒网关超时断连。
  */
 export async function getWeChatUserInfo(
   openid: string,
-  timeoutMs = 4000
+  timeoutMs = 600
 ): Promise<{ nickname: string; headimgurl: string } | null> {
   const cfg = getWeChatConfig();
   if (!cfg.appId || !cfg.appSecret || !openid) return null;
@@ -244,14 +270,52 @@ export async function getWeChatUserInfo(
       });
       return { nickname: data.nickname, headimgurl: data.headimgurl || '' };
     }
-    if (data?.errcode) {
-      console.warn(`[wechat] user/info errcode=${data.errcode} (openid=${openid})`);
-    }
     return null;
   } catch (e) {
-    console.warn('[wechat] getWeChatUserInfo failed', e);
     return null;
   }
+}
+
+// 群/个人二维码 media_id 临时素材缓存 (3 天内有效)
+let cachedGroupMediaId: { mediaId: string; expiresAt: number } | null = null;
+
+/**
+ * 自动上传本地二维码图片至微信获取临时素材 media_id
+ */
+export async function getOrUploadGroupQrMediaId(): Promise<string | null> {
+  if (cachedGroupMediaId && cachedGroupMediaId.expiresAt > Date.now()) {
+    return cachedGroupMediaId.mediaId;
+  }
+  const cfg = getWeChatConfig();
+  if (!cfg.appId || !cfg.appSecret) return null;
+  try {
+    const token = await getWeChatAccessToken();
+    const filePath = path.join(process.cwd(), 'public', 'assets', 'aistudio', 'image_5a13498c.png');
+    if (!fs.existsSync(filePath)) return null;
+
+    const fileBuffer = fs.readFileSync(filePath);
+    const blob = new Blob([fileBuffer], { type: 'image/png' });
+    const formData = new FormData();
+    formData.append('media', blob, 'group_qr.png');
+
+    const uploadUrl = `https://api.weixin.qq.com/cgi-bin/media/upload?access_token=${token}&type=image`;
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData
+    });
+    const data = (await res.json()) as { media_id?: string; created_at?: number; errcode?: number; errmsg?: string };
+    if (data.media_id) {
+      cachedGroupMediaId = {
+        mediaId: data.media_id,
+        expiresAt: Date.now() + 2.5 * 24 * 60 * 60 * 1000 // 缓存 2.5 天
+      };
+      console.log(`[WeChat] Successfully cached temporary group QR media_id: ${data.media_id}`);
+      return data.media_id;
+    }
+  } catch (err) {
+    console.warn('[WeChat] getOrUploadGroupQrMediaId failed:', err);
+  }
+  return null;
 }
 
 // ============================================================

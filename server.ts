@@ -18,6 +18,8 @@ import {
   parseWeChatXml,
   buildWeChatReplyXml,
   buildWeChatImageReplyXml,
+  buildWeChatNewsReplyXml,
+  getOrUploadGroupQrMediaId,
   getWeChatUserInfo,
   fillNickname,
   getWeChatAccessToken,
@@ -29,12 +31,33 @@ import {
 } from './src/server/wechatService';
 import { createWebhookHandler } from './wechat/webhook';
 import { issueLoginCode } from './wechat/pairing';
+import { decryptMessage, encryptedReply } from './wechat/wechat-crypto';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+export const WECHAT_WEBHOOK_PATHS = [
+  '/api/wechat/webhook',
+  '/wechat/webhook',
+  '/wechat/callback',
+  '/api/wechat/callback',
+  '/wechat'
+];
+
 app.use(express.json());
-app.use(express.text({ type: ['text/xml', 'application/xml'] }));
+app.use(express.text({ type: ['text/xml', 'application/xml', 'text/plain'] }));
+
+// Ensure raw body is captured for all WeChat webhook paths regardless of content-type
+app.use(WECHAT_WEBHOOK_PATHS, (req, res, next) => {
+  if (typeof req.body === 'string' && req.body.length > 0) return next();
+  let data = '';
+  req.setEncoding('utf8');
+  req.on('data', chunk => { data += chunk; });
+  req.on('end', () => {
+    if (data) req.body = data;
+    next();
+  });
+});
 
 // 辅助函数：根据 6 位数字代码或带前缀代码生成腾讯行情标准代码
 function formatTencentCode(rawCode: string): string {
@@ -519,8 +542,18 @@ const officialWebhookHandler = createWebhookHandler({
   }
 });
 
-// 10.4 微信公众平台开发者接入验证 (GET Webhook)
-app.get('/api/wechat/webhook', async (req, res) => {
+function isValidWeChatMediaId(mediaId: any): boolean {
+  if (!mediaId || typeof mediaId !== 'string') return false;
+  const trimmed = mediaId.trim();
+  if (/^REPLACE_/i.test(trimmed)) return false;
+  // 32-character hex strings are MD5 hashes, not Tencent media_ids
+  if (/^[a-f0-9]{32}$/i.test(trimmed)) return false;
+  // Valid Tencent media_id strings are generally 40+ characters long
+  return trimmed.length >= 40;
+}
+
+// 10.4 微信公众平台开发者接入验证 (GET Webhook - 支持多路径与候选 Token)
+app.get(WECHAT_WEBHOOK_PATHS, async (req, res) => {
   const { signature, timestamp, nonce, echostr } = req.query;
   const config = getWeChatConfig();
 
@@ -531,64 +564,59 @@ app.get('/api/wechat/webhook', async (req, res) => {
   // 微信服务器安全加密模式 (GET echostr decrypt)
   if (req.query.msg_signature && WECHAT_MP_CONFIG.aesKey) {
     try {
-      const url = `${req.protocol}://${req.get('host') || 'localhost'}${req.originalUrl}`;
-      const headers = new Headers();
-      for (const [k, v] of Object.entries(req.headers)) {
-        if (v !== undefined) {
-          if (Array.isArray(v)) v.forEach(val => headers.append(k, val));
-          else headers.set(k, v);
-        }
-      }
-      const whatwgReq = new Request(url, { method: 'GET', headers });
-      const whatwgRes = await officialWebhookHandler(whatwgReq);
-      res.status(whatwgRes.status);
-      const text = await whatwgRes.text();
-      return res.send(text);
+      const decrypted = decryptMessage(String(echostr), WECHAT_MP_CONFIG.appId, WECHAT_MP_CONFIG.aesKey);
+      if (decrypted) return res.send(decrypted);
     } catch (e) {
       console.warn('Official encrypted webhook GET check failed, using fallback check', e);
     }
   }
 
-  // 微信服务器标准 SHA-1 签名验证
-  const token = WECHAT_MP_CONFIG.token || config.token;
-  const arr = [token, String(timestamp), String(nonce)].sort();
-  const sha1 = crypto.createHash('sha1').update(arr.join('')).digest('hex');
+  // 支持所有可能的 Token 进行校验 (环境变量、配置、默认)
+  const candidateTokens = [
+    WECHAT_MP_CONFIG.token,
+    config.token,
+    process.env.WECHAT_MP_TOKEN,
+    process.env.WECHAT_TOKEN,
+    'a_share_dividend_wechat_token'
+  ].filter(Boolean) as string[];
 
-  if (sha1 === signature) {
-    res.send(echostr);
-  } else {
-    res.status(403).send('Invalid signature');
+  for (const token of candidateTokens) {
+    const arr = [token, String(timestamp), String(nonce)].sort();
+    const sha1 = crypto.createHash('sha1').update(arr.join('')).digest('hex');
+    if (sha1 === signature) {
+      console.log(`[WeChat GET] Signature verified successfully with token [${token}] on ${req.path}`);
+      return res.send(echostr);
+    }
   }
+
+  console.warn(`[WeChat GET] Signature mismatch for ${signature} on ${req.path}`);
+  res.status(403).send('Invalid signature');
 });
 
-// 10.5 微信公众平台消息推送与自动配对 (POST Webhook - 支持 AES 安全模式与明文模式)
-app.post('/api/wechat/webhook', async (req, res) => {
+// 10.5 微信公众平台消息推送与自动回复 (POST Webhook - 支持 AES 安全模式、明文模式与图片自动降级)
+app.post(WECHAT_WEBHOOK_PATHS, async (req, res) => {
   try {
-    const rawXml = typeof req.body === 'string' ? req.body : '';
+    let rawXml = typeof req.body === 'string' ? req.body : '';
     const isEncrypted = req.query.encrypt_type === 'aes' || req.query.msg_signature;
+    let isDecryptedMode = false;
+    const encryptNonce = String(req.query.nonce || '');
 
-    if (isEncrypted && WECHAT_MP_CONFIG.aesKey) {
-      try {
-        const url = `${req.protocol}://${req.get('host') || 'localhost'}${req.originalUrl}`;
-        const headers = new Headers();
-        for (const [k, v] of Object.entries(req.headers)) {
-          if (v !== undefined) {
-            if (Array.isArray(v)) v.forEach(val => headers.append(k, val));
-            else headers.set(k, v);
+    if (isEncrypted) {
+      if (WECHAT_MP_CONFIG.aesKey) {
+        try {
+          const envelope = parseWeChatXml(rawXml);
+          if (envelope.Encrypt) {
+            const decryptedXml = decryptMessage(envelope.Encrypt, WECHAT_MP_CONFIG.appId, WECHAT_MP_CONFIG.aesKey);
+            if (decryptedXml) {
+              rawXml = decryptedXml;
+              isDecryptedMode = true;
+            }
           }
+        } catch (e) {
+          console.warn('[WeChat POST] Failed to decrypt AES message:', e);
         }
-        const whatwgReq = new Request(url, {
-          method: 'POST',
-          headers,
-          body: rawXml
-        });
-        const whatwgRes = await officialWebhookHandler(whatwgReq);
-        res.status(whatwgRes.status);
-        whatwgRes.headers.forEach((v, k) => res.setHeader(k, v));
-        const replyBody = await whatwgRes.text();
-        return res.send(replyBody);
-      } catch (e) {
-        console.error('Official encrypted webhook POST error:', e);
+      } else {
+        console.warn('[WeChat POST] Encrypted message received, but WECHAT_MP_AES_KEY is missing');
       }
     }
 
@@ -601,6 +629,24 @@ app.post('/api/wechat/webhook', async (req, res) => {
     const toUser = msg.ToUserName || '';
     const msgType = msg.MsgType || '';
     const content = (msg.Content || '').trim();
+    const event = msg.Event || '';
+    const eventKey = msg.EventKey || '';
+
+    console.log(`[WeChat POST] from=${fromUser}, to=${toUser}, type=${msgType}, content="${content}", event=${event}`);
+
+    // 发送回复辅助函数 (安全模式加密, 明文模式直接发 XML)
+    const sendReplyXml = (replyXml: string) => {
+      if (isDecryptedMode && WECHAT_MP_CONFIG.aesKey) {
+        try {
+          const encReply = encryptedReply(replyXml, WECHAT_MP_CONFIG, encryptNonce);
+          res.type('application/xml').send(encReply);
+          return;
+        } catch (e) {
+          console.warn('[WeChat POST] Failed to encrypt reply XML:', e);
+        }
+      }
+      res.type('application/xml').send(replyXml);
+    };
 
     // 当用户发送 6 位数字验证码时自动配对 (支持纯文本模式)
     if (msgType === 'text' && /^\d{6}$/.test(content)) {
@@ -614,7 +660,7 @@ app.post('/api/wechat/webhook', async (req, res) => {
       const namePrefix = info ? `${info.nickname}，` : '';
       const replyText = `🎉 恭喜${namePrefix}配对码【${content}】验证成功！您的微信已与网站账号绑定，之后在网站登录时可直接用微信授权。`;
       const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
-      res.type('application/xml').send(replyXml);
+      sendReplyXml(replyXml);
       return;
     }
 
@@ -624,20 +670,32 @@ app.post('/api/wechat/webhook', async (req, res) => {
       const namePrefix = info ? `${info.nickname}，` : '';
       const replyText = `${namePrefix}网站正在优化升级中，登录功能暂未开放，敬请期待～有高股息相关问题也可以加我微信 leungmaple 一对一交流。`;
       const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
-      res.type('application/xml').send(replyXml);
+      sendReplyXml(replyXml);
       return;
     }
 
     // 关注事件欢迎语 (支持 {微信名} 占位符)
-    if (msgType === 'event' && msg.Event === 'subscribe') {
+    if (msgType === 'event' && event === 'subscribe') {
       const info = await getWeChatUserInfo(fromUser);
       const welcomeText = fillNickname(
         officialReplies.subscribe || `您好！欢迎关注【我爱这young】。\n\n回复「股息」拿高股息清单，回复「下载」拿资料，也可以加我微信 leungmaple 一对一交流～`,
         info ? info.nickname : null
       );
       const replyXml = buildWeChatReplyXml(fromUser, toUser, welcomeText);
-      res.type('application/xml').send(replyXml);
+      sendReplyXml(replyXml);
       return;
+    }
+
+    // 自定义菜单点击事件 (CLICK)
+    if (msgType === 'event' && event === 'CLICK' && eventKey) {
+      const menu = (officialReplies.menus || []).find((m: any) => m.key === eventKey);
+      if (menu) {
+        const info = await getWeChatUserInfo(fromUser);
+        const replyText = fillNickname(menu.reply || '', info ? info.nickname : null);
+        const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
+        sendReplyXml(replyXml);
+        return;
+      }
     }
 
     // 关键词自动回复 (支持 图片回复 与 微信昵称个性化)
@@ -647,23 +705,45 @@ app.post('/api/wechat/webhook', async (req, res) => {
       if (matched) {
         const info = await getWeChatUserInfo(fromUser);
         const nickname = info ? info.nickname : null;
-        // 图片回复: 取微信后台素材 media_id 直接下发
+
+        // 图片回复: 验证是否为合法微信 permanent media_id 或自动上传临时素材
         if (matched.type === 'image') {
-          if (matched.mediaId && !/^REPLACE_/i.test(String(matched.mediaId))) {
-            const imgXml = buildWeChatImageReplyXml(fromUser, toUser, matched.mediaId);
-            res.type('application/xml').send(imgXml);
-          } else {
-            // 未配置有效 media_id: 降级为文本提示, 避免下发无效图片导致微信报错
-            const fallback = matched.fallback || '该图片尚未配置完成，请稍后再试，或回复「股息」拿清单。';
-            const replyXml = buildWeChatReplyXml(fromUser, toUser, fillNickname(fallback, nickname));
-            res.type('application/xml').send(replyXml);
+          let targetMediaId = isValidWeChatMediaId(matched.mediaId) ? String(matched.mediaId).trim() : null;
+          if (!targetMediaId) {
+            try {
+              const uploadedMediaId = await getOrUploadGroupQrMediaId();
+              if (uploadedMediaId && isValidWeChatMediaId(uploadedMediaId)) {
+                targetMediaId = uploadedMediaId;
+              }
+            } catch (e) {
+              console.warn('[WeChat Webhook] auto-upload group QR failed:', e);
+            }
           }
+
+          if (targetMediaId) {
+            const imgXml = buildWeChatImageReplyXml(fromUser, toUser, targetMediaId);
+            sendReplyXml(imgXml);
+            return;
+          }
+
+          // 未拿到有效 media_id: 立即发送包含二维码链接与个人微信号的降级说明文本，绝不让用户端沉默
+          const host = req.get('host') || 'ais-pre-uiv6mxvqstlm5evgvlefvx-21168751131.europe-west2.run.app';
+          const proto = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+          const qrUrl = `${proto}://${host}/assets/aistudio/image_5a13498c.png`;
+          const namePrefix = nickname ? `${nickname}，` : '';
+          const fallbackText = `${namePrefix}这是入群 / ETF 交流的微信二维码 👇\n\n` +
+            `1. 个人微信号：leungmaple（复制后微信搜索添加好友）\n` +
+            `2. 点击查看微信二维码图片：\n${qrUrl}\n\n` +
+            `添加好友时请备注「加群」或「ETF」，我看到后拉你进高股息交流群～`;
+          const replyXml = buildWeChatReplyXml(fromUser, toUser, fallbackText);
+          sendReplyXml(replyXml);
           return;
         }
+
         // 文本回复: 替换 {微信名} 占位符为粉丝真实昵称
         const replyText = fillNickname(matched.reply || '', nickname);
         const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
-        res.type('application/xml').send(replyXml);
+        sendReplyXml(replyXml);
         return;
       }
     }
@@ -673,7 +753,7 @@ app.post('/api/wechat/webhook', async (req, res) => {
       const info = await getWeChatUserInfo(fromUser);
       const replyText = fillNickname(officialReplies.default, info ? info.nickname : null);
       const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
-      res.type('application/xml').send(replyXml);
+      sendReplyXml(replyXml);
       return;
     }
 
