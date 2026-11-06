@@ -612,24 +612,17 @@ app.post('/api/wechat/webhook', async (req, res) => {
       });
 
       const namePrefix = info ? `${info.nickname}，` : '';
-      const replyText = `🎉 恭喜${namePrefix}配对码【${content}】验证成功！\n\n已为您解锁全站 5,652 支股票数据、理想股息率备选池测算及高清长图导出权限，立即返回浏览器即可开始使用。`;
+      const replyText = `🎉 恭喜${namePrefix}配对码【${content}】验证成功！您的微信已与网站账号绑定，之后在网站登录时可直接用微信授权。`;
       const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
       res.type('application/xml').send(replyXml);
       return;
     }
 
-    // 登录关键词
+    // 登录关键词 (网站优化中, 暂不主动推网站登录)
     if (msgType === 'text' && (content === '登录' || content.toLowerCase() === 'login')) {
       const info = await getWeChatUserInfo(fromUser);
-      const sess = generatePairingCode();
-      confirmPairing(sess.code, {
-        openid: fromUser,
-        nickname: info ? info.nickname : `微信用户_${fromUser.slice(-4)}`,
-        avatar: info ? info.headimgurl : undefined
-      });
-      const siteUrl = process.env.SITE_URL || 'https://a-studio-1816.ai.studio';
       const namePrefix = info ? `${info.nickname}，` : '';
-      const replyText = `${namePrefix}您的登录码为：${sess.code}（10分钟内有效）\n\n👉 微信内一键免密登录：\n${siteUrl}/?wechat_login=${sess.code}\n\n或者在网页直接输入该 6 位配对码完成授权。`;
+      const replyText = `${namePrefix}网站正在优化升级中，登录功能暂未开放，敬请期待～有高股息相关问题也可以加我微信 leungmaple 一对一交流。`;
       const replyXml = buildWeChatReplyXml(fromUser, toUser, replyText);
       res.type('application/xml').send(replyXml);
       return;
@@ -639,7 +632,7 @@ app.post('/api/wechat/webhook', async (req, res) => {
     if (msgType === 'event' && msg.Event === 'subscribe') {
       const info = await getWeChatUserInfo(fromUser);
       const welcomeText = fillNickname(
-        officialReplies.subscribe || `您好！欢迎关注【我爱这young】。\n\n如需登录网站解锁全部高股息投研功能，请在网页点击「公众号关注登录」获取 6 位数字配对码，并直接在此回复该 6 位配对码即可免密极速登录！`,
+        officialReplies.subscribe || `您好！欢迎关注【我爱这young】。\n\n回复「股息」拿高股息清单，回复「下载」拿资料，也可以加我微信 leungmaple 一对一交流～`,
         info ? info.nickname : null
       );
       const replyXml = buildWeChatReplyXml(fromUser, toUser, welcomeText);
