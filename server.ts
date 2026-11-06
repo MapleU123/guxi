@@ -642,7 +642,8 @@ app.post('/api/wechat/webhook', async (req, res) => {
 
     // 关键词自动回复 (支持 图片回复 与 微信昵称个性化)
     if (msgType === 'text' && officialReplies.keywords) {
-      const matched = officialReplies.keywords.find((k: any) => k.keyword && content.includes(k.keyword));
+      const contentLower = content.toLowerCase();
+      const matched = officialReplies.keywords.find((k: any) => k.keyword && contentLower.includes(String(k.keyword).toLowerCase()));
       if (matched) {
         const info = await getWeChatUserInfo(fromUser);
         const nickname = info ? info.nickname : null;
