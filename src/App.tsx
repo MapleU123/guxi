@@ -29,6 +29,7 @@ import { MarketUniverseModal } from './components/MarketUniverseModal';
 import { TargetWatchlistModal } from './components/TargetWatchlistModal';
 import { AuthModal } from './components/AuthModal';
 import { SmtpConfigModal } from './components/SmtpConfigModal';
+import { WechatMpConfigModal } from './components/WechatMpConfigModal';
 import { PieChart, Download, Layers, ShieldCheck, Sparkles, HelpCircle, Image as ImageIcon, Target, BookmarkPlus } from 'lucide-react';
 import { exportToExcel } from './utils/exportExcel';
 import { getOfficialAccountConfig, verifyOneTapLogin } from './utils/wechatPairingService';
@@ -170,6 +171,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalPrompt, setAuthModalPrompt] = useState<string | undefined>(undefined);
   const [isSmtpConfigModalOpen, setIsSmtpConfigModalOpen] = useState<boolean>(false);
+  const [isWechatMpModalOpen, setIsWechatMpModalOpen] = useState<boolean>(true);
 
   const handleLoginSuccess = useCallback((session: UserSession) => {
     const sessionWithExpiry: UserSession = {
@@ -696,6 +698,7 @@ export default function App() {
         onOpenAuthModal={handleOpenAuthModal}
         onLogout={handleLogout}
         onOpenSmtpConfig={() => setIsSmtpConfigModalOpen(true)}
+        onOpenWechatMpConfig={() => setIsWechatMpModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -1070,6 +1073,12 @@ export default function App() {
       <SmtpConfigModal
         isOpen={isSmtpConfigModalOpen}
         onClose={() => setIsSmtpConfigModalOpen(false)}
+      />
+
+      {/* 微信公众平台开发者对接配置弹窗 (Token / EncodingAESKey) */}
+      <WechatMpConfigModal
+        isOpen={isWechatMpModalOpen}
+        onClose={() => setIsWechatMpModalOpen(false)}
       />
 
     </div>

@@ -27,7 +27,9 @@ import {
   handleSubscribeCallback,
   sendSubscriptionMessage,
   pushToScene,
-  SUBSCRIBE_SCENES
+  SUBSCRIBE_SCENES,
+  getStoredWeChatMpConfig,
+  saveWeChatMpConfig
 } from './src/server/wechatService';
 import { createWebhookHandler } from './wechat/webhook';
 import { issueLoginCode } from './wechat/pairing';
@@ -501,15 +503,7 @@ app.post('/api/wechat/pair', (req, res) => {
   });
 });
 
-const WECHAT_MP_CONFIG = {
-  appId: process.env.WECHAT_MP_APP_ID || '',
-  appSecret: process.env.WECHAT_MP_APP_SECRET || '',
-  originalId: process.env.WECHAT_MP_ORIGINAL_ID || 'gh_7d39de02f610',
-  token: process.env.WECHAT_MP_TOKEN || process.env.WECHAT_TOKEN || 'a_share_dividend_wechat_token',
-  aesKey: process.env.WECHAT_MP_AES_KEY || '',
-  codeSecret: process.env.WECHAT_MP_CODE_SECRET || 'a_share_dividend_pairing_secret_key_12345',
-  namespace: 'ashare-dividend'
-};
+const WECHAT_MP_CONFIG = getStoredWeChatMpConfig();
 
 let officialReplies: any = {};
 try {
@@ -773,6 +767,67 @@ app.get('/api/wechat/config', (req, res) => {
       name: config.name,
       wechatId: config.wechatId,
       qrImageUrl: config.qrImageUrl
+    }
+  });
+});
+
+// 10.6.1 获取微信公众平台开发者对接配置 (Token / EncodingAESKey / Webhook URL)
+app.get('/api/wechat/mp-config', (req, res) => {
+  const config = getStoredWeChatMpConfig();
+  const host = req.get('host') || 'ais-pre-uiv6mxvqstlm5evgvlefvx-21168751131.europe-west2.run.app';
+  const proto = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+  const webhookUrl = `${proto}://${host}/api/wechat/webhook`;
+
+  res.json({
+    success: true,
+    data: {
+      ...config,
+      webhookUrl
+    }
+  });
+});
+
+// 10.6.2 保存微信公众平台开发者对接配置 (支持热更新无需重启)
+app.post('/api/wechat/mp-config', (req, res) => {
+  const { appId, appSecret, originalId, token, aesKey } = req.body || {};
+
+  const updated = saveWeChatMpConfig({
+    appId: appId !== undefined ? String(appId).trim() : undefined,
+    appSecret: appSecret !== undefined ? String(appSecret).trim() : undefined,
+    originalId: originalId !== undefined ? String(originalId).trim() : undefined,
+    token: token !== undefined ? String(token).trim() : undefined,
+    aesKey: aesKey !== undefined ? String(aesKey).trim() : undefined
+  });
+
+  // 内存热更新
+  Object.assign(WECHAT_MP_CONFIG, updated);
+
+  res.json({
+    success: true,
+    message: '微信公众平台开发者配置已保存并立即生效！',
+    data: updated
+  });
+});
+
+// 10.6.3 测试微信 SHA-1 Token 签名算法连通性
+app.post('/api/wechat/test-signature', (req, res) => {
+  const config = getStoredWeChatMpConfig();
+  const token = (req.body?.token || config.token).trim();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = String(Math.floor(100000 + Math.random() * 900000));
+  const echostr = 'test_' + crypto.randomBytes(8).toString('hex');
+  const arr = [token, timestamp, nonce].sort();
+  const signature = crypto.createHash('sha1').update(arr.join('')).digest('hex');
+
+  res.json({
+    success: true,
+    message: 'SHA-1 签名计算通过',
+    data: {
+      token,
+      timestamp,
+      nonce,
+      signature,
+      echostr
     }
   });
 });

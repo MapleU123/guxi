@@ -22,16 +22,73 @@ export interface WeChatConfig {
   token: string;
   appId?: string;
   appSecret?: string;
+  aesKey?: string;
 }
 
-const DEFAULT_WECHAT_CONFIG: WeChatConfig = {
-  name: '我爱这young',
-  wechatId: 'gh_7d39de02f610',
-  qrImageUrl: '/assets/qrcode_gh_7d39de02f610.jpg',
-  token: process.env.WECHAT_TOKEN || 'a_share_dividend_wechat_token',
-  appId: process.env.WECHAT_MP_APP_ID || '',
-  appSecret: process.env.WECHAT_MP_APP_SECRET || ''
-};
+export interface WeChatMpServerConfig {
+  appId: string;
+  appSecret: string;
+  originalId: string;
+  token: string;
+  aesKey: string;
+  codeSecret: string;
+  namespace: string;
+}
+
+const MP_CONFIG_FILE_PATH = path.join(process.cwd(), 'data', 'wechat_mp_config.json');
+
+export function getStoredWeChatMpConfig(): WeChatMpServerConfig {
+  let saved: Partial<WeChatMpServerConfig> = {};
+  if (fs.existsSync(MP_CONFIG_FILE_PATH)) {
+    try {
+      saved = JSON.parse(fs.readFileSync(MP_CONFIG_FILE_PATH, 'utf-8'));
+    } catch (e) {
+      console.warn('[WeChat] Could not read wechat_mp_config.json', e);
+    }
+  }
+
+  return {
+    appId: saved.appId !== undefined ? saved.appId : (process.env.WECHAT_MP_APP_ID || ''),
+    appSecret: saved.appSecret !== undefined ? saved.appSecret : (process.env.WECHAT_MP_APP_SECRET || ''),
+    originalId: saved.originalId || process.env.WECHAT_MP_ORIGINAL_ID || 'gh_7d39de02f610',
+    token: saved.token || process.env.WECHAT_MP_TOKEN || process.env.WECHAT_TOKEN || 'a_share_dividend_wechat_token',
+    aesKey: saved.aesKey !== undefined ? saved.aesKey : (process.env.WECHAT_MP_AES_KEY || ''),
+    codeSecret: saved.codeSecret || process.env.WECHAT_MP_CODE_SECRET || 'a_share_dividend_pairing_secret_key_12345',
+    namespace: saved.namespace || 'ashare-dividend'
+  };
+}
+
+export function saveWeChatMpConfig(config: Partial<WeChatMpServerConfig>): WeChatMpServerConfig {
+  const current = getStoredWeChatMpConfig();
+  const updated: WeChatMpServerConfig = {
+    ...current,
+    ...config
+  };
+
+  try {
+    const dir = path.dirname(MP_CONFIG_FILE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(MP_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf-8');
+    console.log('[WeChat] Successfully saved wechat_mp_config.json');
+  } catch (e) {
+    console.error('[WeChat] Failed to save wechat_mp_config.json', e);
+  }
+
+  return updated;
+}
+
+export function getWeChatConfig(): WeChatConfig {
+  const mp = getStoredWeChatMpConfig();
+  return {
+    name: '我爱这young',
+    wechatId: mp.originalId || 'gh_7d39de02f610',
+    qrImageUrl: '/assets/qrcode_gh_7d39de02f610.jpg',
+    token: mp.token || 'a_share_dividend_wechat_token',
+    appId: mp.appId || '',
+    appSecret: mp.appSecret || '',
+    aesKey: mp.aesKey || ''
+  };
+}
 
 // In-memory pairing sessions map: code -> session
 const pairingSessions = new Map<string, WeChatPairingSession>();
@@ -45,10 +102,6 @@ setInterval(() => {
     }
   }
 }, 60 * 1000);
-
-export function getWeChatConfig(): WeChatConfig {
-  return DEFAULT_WECHAT_CONFIG;
-}
 
 /**
  * Generate a new 6-digit numeric pairing code valid for 10 minutes
@@ -111,7 +164,7 @@ export function confirmPairing(
       expiresAt: now + 10 * 60 * 1000,
       status: 'paired',
       openid: userInfo.openid || `wx_openid_${code}`,
-      nickname: userInfo.nickname || `${DEFAULT_WECHAT_CONFIG.name}·学友`,
+      nickname: userInfo.nickname || '我爱这young·学友',
       avatar: userInfo.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
       pairedAt: now
     };
@@ -126,7 +179,7 @@ export function confirmPairing(
 
   session.status = 'paired';
   session.openid = userInfo.openid || session.openid || `wx_openid_${code}`;
-  session.nickname = userInfo.nickname || session.nickname || `${DEFAULT_WECHAT_CONFIG.name}·学友`;
+  session.nickname = userInfo.nickname || session.nickname || '我爱这young·学友';
   session.avatar = userInfo.avatar || session.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80';
   session.pairedAt = Date.now();
 

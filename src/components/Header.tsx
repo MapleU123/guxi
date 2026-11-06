@@ -1,4 +1,4 @@
-import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart, LogIn, LogOut, User as UserIcon, Mail, Settings } from 'lucide-react';
+import { RefreshCw, Download, TrendingUp, Clock, ShieldCheck, Zap, HelpCircle, Bell, AlertTriangle, Activity, Image as ImageIcon, Sparkles, Plus, Target, PieChart, LogIn, LogOut, User as UserIcon, Mail, Settings, Key } from 'lucide-react';
 import { Stock, FilterCriteria } from '../types';
 import { exportToExcel } from '../utils/exportExcel';
 import { getTradingStatus } from '../utils/realtimeQuoteService';
@@ -44,6 +44,7 @@ interface HeaderProps {
   onOpenAuthModal?: (tab?: 'wechat' | 'email') => void;
   onLogout?: () => void;
   onOpenSmtpConfig?: () => void;
+  onOpenWechatMpConfig?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -74,7 +75,8 @@ export const Header: React.FC<HeaderProps> = ({
   userSession = null,
   onOpenAuthModal,
   onLogout,
-  onOpenSmtpConfig
+  onOpenSmtpConfig,
+  onOpenWechatMpConfig
 }) => {
   const tradingInfo = getTradingStatus();
   const mpConfig = getOfficialAccountConfig();
@@ -385,6 +387,15 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  {onOpenWechatMpConfig && (
+                    <button
+                      onClick={onOpenWechatMpConfig}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition cursor-pointer"
+                      title="微信公众号开发者对接配置 (Token / EncodingAESKey)"
+                    >
+                      <Key className="w-3.5 h-3.5 text-emerald-400" />
+                    </button>
+                  )}
                   {onOpenSmtpConfig && (
                     <button
                       onClick={onOpenSmtpConfig}
@@ -407,6 +418,16 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             ) : (
               <div className="flex items-center gap-2">
+                {onOpenWechatMpConfig && (
+                  <button
+                    onClick={onOpenWechatMpConfig}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition cursor-pointer border border-slate-700/60"
+                    title="微信公众号开发者对接配置 (Token / EncodingAESKey)"
+                  >
+                    <Key className="w-3.5 h-3.5 text-emerald-400" />
+                  </button>
+                )}
+
                 {onOpenSmtpConfig && (
                   <button
                     onClick={onOpenSmtpConfig}

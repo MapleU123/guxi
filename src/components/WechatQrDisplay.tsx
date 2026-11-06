@@ -10,6 +10,7 @@ interface WechatQrDisplayProps {
   size?: 'sm' | 'md' | 'lg';
   showUploadButton?: boolean;
   onConfigChanged?: (config: OfficialAccountConfig) => void;
+  onOpenMpConfig?: () => void;
 }
 
 export const WechatQrDisplay: React.FC<WechatQrDisplayProps> = ({
@@ -18,7 +19,8 @@ export const WechatQrDisplay: React.FC<WechatQrDisplayProps> = ({
   officialAccountId,
   size = 'md',
   showUploadButton = true,
-  onConfigChanged
+  onConfigChanged,
+  onOpenMpConfig
 }) => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isZoomOpen, setIsZoomOpen] = useState(false);
@@ -248,6 +250,7 @@ export const WechatQrDisplay: React.FC<WechatQrDisplayProps> = ({
         isOpen={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
         onSaved={onConfigChanged}
+        onOpenMpConfig={onOpenMpConfig}
       />
     </>
   );

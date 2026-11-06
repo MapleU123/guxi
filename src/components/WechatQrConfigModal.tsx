@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { 
   X, Upload, Image as ImageIcon, CheckCircle2, RotateCcw, 
-  HelpCircle, AlertTriangle, QrCode, Sparkles 
+  HelpCircle, AlertTriangle, QrCode, Sparkles, Key 
 } from 'lucide-react';
 import { 
   getOfficialAccountConfig, 
@@ -14,12 +14,14 @@ interface WechatQrConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: (config: OfficialAccountConfig) => void;
+  onOpenMpConfig?: () => void;
 }
 
 export const WechatQrConfigModal: React.FC<WechatQrConfigModalProps> = ({
   isOpen,
   onClose,
-  onSaved
+  onSaved,
+  onOpenMpConfig
 }) => {
   const currentConfig = getOfficialAccountConfig();
   const [name, setName] = useState<string>(currentConfig.name);
@@ -117,7 +119,23 @@ export const WechatQrConfigModal: React.FC<WechatQrConfigModalProps> = ({
 
         {/* Content */}
         <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-          
+          {onOpenMpConfig && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenMpConfig();
+              }}
+              className="w-full py-2.5 px-3.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-xs font-semibold flex items-center justify-between transition cursor-pointer group shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+                <span>配置微信公众号后台对接参数 (Token / EncodingAESKey)</span>
+              </div>
+              <span className="text-[11px] text-indigo-400 font-medium">去配置 →</span>
+            </button>
+          )}
+
           {/* Friendly Guidance Box */}
           <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200 space-y-1.5">
             <div className="flex items-center gap-1.5 font-bold text-amber-300">
