@@ -48,7 +48,8 @@
       "keyword": "海报",
       "mode": "contains",
       "type": "image",
-      "mediaId": "REPLACE_WITH_WECHAT_MEDIA_ID"
+      "mediaId": "f8e384229cd4a223ed008ce7c954c6ac",
+      "fallback": "{微信名}，这是我的微信二维码，正在准备中～也可以直接搜索 leungmaple 加我好友。"
     },
     {
       "keyword": "群",
