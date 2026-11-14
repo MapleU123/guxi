@@ -59,6 +59,11 @@
       "fallback": "{微信名}，这是我的微信二维码，正在准备中～也可以直接搜索 leungmaple 加我好友。"
     },
     {
+      "keyword": "网格间距",
+      "mode": "contains",
+      "reply": "{微信名}，这是网格仓位与获利计算表 👇\n【腾讯文档】网格仓位与获利计算\nhttps://docs.qq.com/sheet/DU1VpR1hGTFNwREdh"
+    },
+    {
       "keyword": "网格",
       "mode": "contains",
       "type": "image",
